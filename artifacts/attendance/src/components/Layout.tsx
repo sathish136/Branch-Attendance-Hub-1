@@ -161,7 +161,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Navigation — scrolls independently */}
         <nav className={cn(
-          "flex-1 py-4 overflow-y-auto min-h-0",
+          "flex-1 py-4 overflow-y-auto overflow-x-hidden min-h-0",
           collapsed ? "px-2 space-y-1" : "px-3 space-y-5"
         )}>
           {NAV_GROUPS.map((group) => (
@@ -182,49 +182,80 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     location === item.href ||
                     (item.href !== "/" && location.startsWith(item.href));
 
-                  return collapsed ? (
-                    <div key={item.href} className="relative group/tip">
+                  /* ── Collapsed item ── */
+                  if (collapsed) {
+                    return (
+                      <div key={item.href} className="relative group/tip" style={{ zIndex: isActive ? 1 : "auto" }}>
+                        {/* Concave corner — top */}
+                        {isActive && (
+                          <span className="pointer-events-none absolute z-[2]"
+                            style={{ right: 0, top: -10, width: 10, height: 10,
+                              background: "hsl(var(--sidebar))", borderBottomLeftRadius: 10 }} />
+                        )}
+                        <Link
+                          href={item.href}
+                          className={cn(
+                            "flex items-center justify-center h-9 rounded-xl transition-all duration-150",
+                            isActive
+                              ? "nav-active-tab-sm bg-sidebar-active shadow-md shadow-sidebar-active/30"
+                              : "w-full hover:bg-white/10"
+                          )}
+                        >
+                          <item.icon className={cn(
+                            "w-[17px] h-[17px] shrink-0",
+                            isActive ? "text-white" : "text-white/45 group-hover/tip:text-white"
+                          )} />
+                        </Link>
+                        {/* Concave corner — bottom */}
+                        {isActive && (
+                          <span className="pointer-events-none absolute z-[2]"
+                            style={{ right: 0, bottom: -10, width: 10, height: 10,
+                              background: "hsl(var(--sidebar))", borderTopLeftRadius: 10 }} />
+                        )}
+                        {/* Tooltip */}
+                        <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-50
+                                        opacity-0 group-hover/tip:opacity-100 transition-opacity duration-150">
+                          <div className="bg-gray-900 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
+                            {item.label}
+                            <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  /* ── Expanded item ── */
+                  return (
+                    <div key={item.href} className="relative" style={{ zIndex: isActive ? 1 : "auto" }}>
+                      {/* Concave corner — top */}
+                      {isActive && (
+                        <span className="pointer-events-none absolute z-[2]"
+                          style={{ right: 0, top: -12, width: 12, height: 12,
+                            background: "hsl(var(--sidebar))", borderBottomLeftRadius: 12 }} />
+                      )}
                       <Link
                         href={item.href}
                         className={cn(
-                          "flex items-center justify-center w-full h-9 rounded-xl transition-all duration-150",
+                          "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150",
                           isActive
-                            ? "nav-active-tab-sm bg-sidebar-active shadow-md shadow-sidebar-active/30"
-                            : "hover:bg-white/10"
+                            ? "nav-active-tab bg-sidebar-active text-white shadow-lg shadow-sidebar-active/25"
+                            : "text-white/55 hover:bg-white/8 hover:text-white"
                         )}
                       >
                         <item.icon className={cn(
-                          "w-[17px] h-[17px] shrink-0",
-                          isActive ? "text-white" : "text-white/45 group-hover/tip:text-white"
+                          "w-[15px] h-[15px] shrink-0 transition-colors",
+                          isActive ? "text-white" : "text-white/45 group-hover:text-white"
                         )} />
+                        <span className="flex-1 truncate">{item.label}</span>
+                        {isActive && <span className="w-1.5 h-1.5 rounded-full bg-white/70 shrink-0" />}
                       </Link>
-                      {/* Tooltip */}
-                      <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-3 z-50
-                                      opacity-0 group-hover/tip:opacity-100 transition-opacity duration-150">
-                        <div className="bg-gray-900 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
-                          {item.label}
-                          <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={cn(
-                        "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150",
-                        isActive
-                          ? "nav-active-tab bg-sidebar-active text-white shadow-lg shadow-sidebar-active/25"
-                          : "text-white/55 hover:bg-white/8 hover:text-white"
+                      {/* Concave corner — bottom */}
+                      {isActive && (
+                        <span className="pointer-events-none absolute z-[2]"
+                          style={{ right: 0, bottom: -12, width: 12, height: 12,
+                            background: "hsl(var(--sidebar))", borderTopLeftRadius: 12 }} />
                       )}
-                    >
-                      <item.icon className={cn(
-                        "w-[15px] h-[15px] shrink-0 transition-colors",
-                        isActive ? "text-white" : "text-white/45 group-hover:text-white"
-                      )} />
-                      <span className="flex-1 truncate">{item.label}</span>
-                      {isActive && <span className="w-1.5 h-1.5 rounded-full bg-white/70 shrink-0" />}
-                    </Link>
+                    </div>
                   );
                 })}
               </div>

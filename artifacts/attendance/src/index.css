@@ -56,62 +56,14 @@
 
 /* ── Active sidebar tab shape — expanded ──────────────────────────────── */
 .nav-active-tab {
-  position: relative;
-  z-index: 1;
   border-radius: 14px 0 0 14px !important;
-  margin-right: -12px; /* extend to sidebar right wall (nav has px-3 = 12px) */
-}
-
-.nav-active-tab::before,
-.nav-active-tab::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  width: 14px;
-  height: 14px;
-  background: hsl(var(--sidebar));
-  pointer-events: none;
-  z-index: 2;
-}
-
-.nav-active-tab::before {
-  bottom: 100%;
-  border-bottom-left-radius: 14px;
-}
-
-.nav-active-tab::after {
-  top: 100%;
-  border-top-left-radius: 14px;
+  width: calc(100% + 12px); /* stretch into the nav's right padding to reach sidebar wall */
 }
 
 /* ── Active sidebar tab shape — collapsed ─────────────────────────────── */
 .nav-active-tab-sm {
-  position: relative;
-  z-index: 1;
   border-radius: 10px 0 0 10px !important;
-  margin-right: -8px; /* extend to sidebar right wall (nav has px-2 = 8px) */
-}
-
-.nav-active-tab-sm::before,
-.nav-active-tab-sm::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  width: 10px;
-  height: 10px;
-  background: hsl(var(--sidebar));
-  pointer-events: none;
-  z-index: 2;
-}
-
-.nav-active-tab-sm::before {
-  bottom: 100%;
-  border-bottom-left-radius: 10px;
-}
-
-.nav-active-tab-sm::after {
-  top: 100%;
-  border-top-left-radius: 10px;
+  width: calc(100% + 8px); /* stretch into the nav's right padding to reach sidebar wall */
 }
 
 /* Custom Scrollbar for dense tables */
