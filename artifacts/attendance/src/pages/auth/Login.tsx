@@ -1,25 +1,46 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { Card, Input, Label, Button } from "@/components/ui";
-import { Mail, Lock, Fingerprint } from "lucide-react";
+import { Mail, Lock, Fingerprint, AlertCircle } from "lucide-react";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function Login() {
   const [, setLocation] = useLocation();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const res = await fetch(`${BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.message || "Invalid username or password.");
+        return;
+      }
+      localStorage.setItem("auth_token", data.token);
+      localStorage.setItem("auth_user", JSON.stringify(data.user));
       setLocation("/");
-    }, 800);
+    } catch {
+      setError("Unable to connect to server. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-sidebar flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Decorative background elements */}
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-primary/20 rounded-full blur-3xl"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-3xl"></div>
+      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-primary/20 rounded-full blur-3xl" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-3xl" />
 
       <Card className="w-full max-w-md p-8 shadow-2xl relative z-10 border-0 bg-white/95 backdrop-blur-xl">
         <div className="text-center mb-8">
@@ -30,33 +51,50 @@ export default function Login() {
           <p className="text-sm text-gray-500 mt-2">Sign in to manage attendance and workforce</p>
         </div>
 
+        {error && (
+          <div className="mb-5 flex items-start gap-2.5 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         <form onSubmit={handleLogin} className="space-y-5">
           <div className="space-y-2">
             <Label className="text-gray-700">Username or Email</Label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input required placeholder="admin@postoffice.com" className="pl-10 py-2.5 bg-gray-50" />
+              <Input
+                required
+                placeholder="admin"
+                className="pl-10 py-2.5 bg-gray-50"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+              />
             </div>
           </div>
-          
+
           <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label className="text-gray-700">Password</Label>
-              <a href="#" className="text-xs text-primary hover:underline font-medium">Forgot password?</a>
-            </div>
+            <Label className="text-gray-700">Password</Label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input required type="password" placeholder="••••••••" className="pl-10 py-2.5 bg-gray-50" />
+              <Input
+                required
+                type="password"
+                placeholder="••••••••"
+                className="pl-10 py-2.5 bg-gray-50"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+              />
             </div>
           </div>
 
           <Button type="submit" className="w-full py-2.5 text-base mt-2 shadow-lg shadow-primary/25" disabled={loading}>
-            {loading ? "Authenticating..." : "Sign In to Dashboard"}
+            {loading ? "Authenticating…" : "Sign In to Dashboard"}
           </Button>
         </form>
 
         <div className="mt-8 text-center text-xs text-gray-400">
-          <p>Secure Enterprise Portal • ZKteco Integrated</p>
+          <p>Secure Enterprise Portal • ZKTeco Integrated</p>
         </div>
       </Card>
     </div>
