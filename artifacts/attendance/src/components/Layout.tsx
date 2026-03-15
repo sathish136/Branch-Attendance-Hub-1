@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -17,6 +17,12 @@ import {
   UserCog,
   ChevronsLeft,
   ChevronsRight,
+  Search,
+  X,
+  AlertCircle,
+  CheckCircle2,
+  Info,
+  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -79,6 +85,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string>(() => localStorage.getItem("org_logo") || "");
+  const [now, setNow] = useState(new Date());
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const storedUser = (() => {
     try { return JSON.parse(localStorage.getItem("auth_user") || "{}"); } catch { return {}; }
@@ -92,6 +104,28 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     window.addEventListener("org_logo_updated", handler);
     return () => window.removeEventListener("org_logo_updated", handler);
   }, []);
+
+  /* Live clock */
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  /* Close notification dropdown on outside click */
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  /* Focus search input when opened */
+  useEffect(() => {
+    if (searchOpen) setTimeout(() => searchRef.current?.focus(), 50);
+  }, [searchOpen]);
 
   async function handleLogout() {
     try {
@@ -309,22 +343,120 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* ── Main Content ──────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* Frozen top header */}
-        <header className="h-14 bg-card border-b border-border flex items-center justify-between px-6 shrink-0 shadow-sm z-10">
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span className="font-semibold text-foreground">Head Office</span>
-            <span className="text-border">|</span>
-            <span>
-              {new Date().toLocaleDateString("en-US", {
-                weekday: "long", year: "numeric", month: "long", day: "numeric",
-              })}
+        {/* ── Top header ─────────────────────────────────────────── */}
+        <header className="h-14 bg-card border-b border-border flex items-center gap-3 px-5 shrink-0 shadow-sm z-10">
+
+          {/* Left — branch + date/time */}
+          <div className="flex items-center gap-2 min-w-0 shrink-0">
+            <MapPin className="w-[14px] h-[14px] text-primary shrink-0" />
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Branch</span>
+            <span className="text-border text-xs">:</span>
+            <span className="font-semibold text-[13px] text-foreground truncate">
+              {storedUser.branchName || "Head Office"}
+            </span>
+            <span className="mx-1 text-border">|</span>
+            <span className="text-[12px] text-muted-foreground hidden sm:block">
+              {now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+            </span>
+            <span className="mx-1 text-border hidden sm:block">·</span>
+            <span className="text-[12px] font-mono font-medium text-foreground tabular-nums hidden sm:block">
+              {now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </span>
           </div>
-          <div className="flex items-center gap-3">
-            <button className="relative p-2 text-muted-foreground hover:bg-muted rounded-lg transition-colors">
-              <Bell className="w-[18px] h-[18px]" />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full border border-card" />
-            </button>
+
+          {/* Centre — search bar */}
+          <div className="flex-1 flex justify-center px-4">
+            {searchOpen ? (
+              <div className="relative w-full max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input
+                  ref={searchRef}
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Escape") { setSearchOpen(false); setSearchQuery(""); } }}
+                  placeholder="Search employees, reports, branches…"
+                  className="w-full h-8 pl-8 pr-8 rounded-lg bg-muted border border-border text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="flex items-center gap-2 h-8 px-3 rounded-lg bg-muted border border-border text-[13px] text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all w-full max-w-sm"
+              >
+                <Search className="w-3.5 h-3.5 shrink-0" />
+                <span className="flex-1 text-left">Search…</span>
+                <kbd className="text-[10px] bg-background border border-border rounded px-1.5 py-0.5 font-mono hidden md:inline">⌘K</kbd>
+              </button>
+            )}
+          </div>
+
+          {/* Right — notification + user */}
+          <div className="flex items-center gap-2 shrink-0">
+
+            {/* Notification bell */}
+            <div ref={notifRef} className="relative">
+              <button
+                onClick={() => setNotifOpen(o => !o)}
+                className="relative p-2 text-muted-foreground hover:bg-muted rounded-lg transition-colors"
+              >
+                <Bell className="w-[18px] h-[18px]" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-card animate-pulse" />
+              </button>
+
+              {/* Notification dropdown */}
+              {notifOpen && (
+                <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                    <span className="font-semibold text-[13px]">Notifications</span>
+                    <span className="text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5 font-bold">3</span>
+                  </div>
+                  <div className="divide-y divide-border max-h-72 overflow-y-auto">
+                    {[
+                      { icon: AlertCircle, color: "text-red-500", bg: "bg-red-50", title: "12 Absent Today", desc: "Employees haven't checked in yet", time: "Just now" },
+                      { icon: AlertCircle, color: "text-orange-500", bg: "bg-orange-50", title: "5 Late Arrivals", desc: "Checked in after shift start time", time: "10 min ago" },
+                      { icon: CheckCircle2, color: "text-green-500", bg: "bg-green-50", title: "Payroll Processed", desc: "March 2026 payroll is ready", time: "1 hr ago" },
+                      { icon: Info, color: "text-blue-500", bg: "bg-blue-50", title: "New Employee Added", desc: "Kamal Perera joined Head Office", time: "2 hrs ago" },
+                    ].map((n, i) => (
+                      <div key={i} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/50 cursor-pointer transition-colors">
+                        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5", n.bg)}>
+                          <n.icon className={cn("w-4 h-4", n.color)} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] font-semibold text-foreground truncate">{n.title}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">{n.desc}</p>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">{n.time}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="px-4 py-2.5 border-t border-border">
+                    <button className="w-full text-[12px] text-primary font-medium hover:underline text-center">
+                      View all notifications
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Divider */}
+            <div className="w-px h-6 bg-border" />
+
+            {/* User chip */}
+            <div className="flex items-center gap-2 pl-1">
+              <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold border border-primary/30 shrink-0">
+                {getInitials(userName)}
+              </div>
+              <div className="hidden md:block leading-tight">
+                <p className="text-[12px] font-semibold text-foreground">{userName}</p>
+                <p className="text-[10px] text-muted-foreground capitalize">{userRole}</p>
+              </div>
+            </div>
           </div>
         </header>
 
