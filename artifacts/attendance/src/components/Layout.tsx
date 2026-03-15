@@ -11,7 +11,8 @@ import {
   Settings,
   FileBarChart,
   LogOut,
-  Bell
+  Bell,
+  Banknote
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { href: "/attendance/today", label: "Today's Attendance", icon: CalendarDays },
   { href: "/attendance/monthly", label: "Monthly Sheet", icon: CalendarRange },
   { href: "/employees", label: "Employees", icon: Users },
+  { href: "/payroll", label: "Payroll", icon: Banknote },
   { href: "/shifts", label: "Shifts", icon: Clock },
   { href: "/branches", label: "Branches", icon: Building2 },
   { href: "/reports", label: "Reports", icon: FileBarChart },

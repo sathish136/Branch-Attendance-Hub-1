@@ -14,6 +14,7 @@ import Reports from "@/pages/reports/Reports";
 import Biometric from "@/pages/biometric/Biometric";
 import Settings from "@/pages/settings/Settings";
 import Users from "@/pages/users/Users";
+import Payroll from "@/pages/payroll/Payroll";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -41,6 +42,7 @@ function Router() {
       <Route path="/branches"><ProtectedRoute component={Branches} /></Route>
       <Route path="/shifts"><ProtectedRoute component={Shifts} /></Route>
       <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
+      <Route path="/payroll"><ProtectedRoute component={Payroll} /></Route>
       <Route path="/biometric"><ProtectedRoute component={Biometric} /></Route>
       <Route path="/settings"><ProtectedRoute component={Settings} /></Route>
       <Route path="/users"><ProtectedRoute component={Users} /></Route>

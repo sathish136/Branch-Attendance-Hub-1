@@ -13,6 +13,7 @@ import holidaysRouter from "./holidays.js";
 import departmentsRouter from "./departments.js";
 import designationsRouter from "./designations.js";
 import mockDataRouter from "./mock-data.js";
+import payrollRouter from "./payroll.js";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use("/holidays", holidaysRouter);
 router.use("/departments", departmentsRouter);
 router.use("/designations", designationsRouter);
 router.use("/mock-data", mockDataRouter);
+router.use("/payroll", payrollRouter);
 
 export default router;
