@@ -1,11 +1,108 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import {
-  branches, shifts, departments, designations, employees, holidays, systemSettings
+  branches, shifts, departments, designations, employees, holidays, systemSettings, attendanceRecords
 } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 
 const router = Router();
+
+const SL_HOLIDAY_DATES_2026 = new Set([
+  "2026-01-01","2026-01-11","2026-01-14",
+  "2026-02-04","2026-02-10","2026-02-17",
+  "2026-03-11","2026-03-31",
+]);
+
+function pad2(n: number) { return String(n).padStart(2, "0"); }
+
+function addMins(time: string, mins: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m + mins;
+  return `${pad2(Math.floor(total / 60) % 24)}:${pad2(total % 60)}`;
+}
+
+function diffHrs(inT: string, outT: string): number {
+  const [ih, im] = inT.split(":").map(Number);
+  const [oh, om] = outT.split(":").map(Number);
+  return ((oh * 60 + om) - (ih * 60 + im)) / 60;
+}
+
+function buildAttendance(empList: { id: number; branchId: number }[]) {
+  const records: any[] = [];
+  const rng = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+  const months = [
+    { year: 2026, month: 1 },
+    { year: 2026, month: 2 },
+    { year: 2026, month: 3 },
+  ];
+
+  for (const { year, month } of months) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    for (const emp of empList) {
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${pad2(month)}-${pad2(d)}`;
+        const dow = new Date(year, month - 1, d).getDay();
+
+        if (dow === 0) continue;
+
+        if (SL_HOLIDAY_DATES_2026.has(dateStr)) {
+          records.push({
+            employeeId: emp.id,
+            branchId: emp.branchId,
+            date: dateStr,
+            status: "holiday",
+            source: "system",
+          });
+          continue;
+        }
+
+        const roll = Math.random();
+        if (roll < 0.07) {
+          records.push({
+            employeeId: emp.id,
+            branchId: emp.branchId,
+            date: dateStr,
+            status: "absent",
+            source: "system",
+          });
+        } else if (roll < 0.10) {
+          records.push({
+            employeeId: emp.id,
+            branchId: emp.branchId,
+            date: dateStr,
+            status: "leave",
+            source: "system",
+          });
+        } else {
+          const isLate = roll > 0.88;
+          const inBase = isLate ? "08:20" : "07:45";
+          const inOffset = rng(0, isLate ? 50 : 30);
+          const inTime = addMins(inBase, inOffset);
+          const outBase = "17:00";
+          const outOffset = rng(0, 45);
+          const outTime = addMins(outBase, outOffset);
+          const worked = Math.round(diffHrs(inTime, outTime) * 100) / 100;
+          const overtime = worked > 8 ? Math.round((worked - 8) * 100) / 100 : 0;
+
+          records.push({
+            employeeId: emp.id,
+            branchId: emp.branchId,
+            date: dateStr,
+            status: isLate ? "late" : "present",
+            inTime1: inTime,
+            outTime1: outTime,
+            workHours1: worked,
+            totalHours: worked,
+            overtimeHours: overtime,
+            source: "biometric",
+          });
+        }
+      }
+    }
+  }
+  return records;
+}
 
 const SL_BRANCHES = [
   { name: "Sri Lanka Post – Head Office", code: "SLP-HQ", type: "head_office" as const, address: "310 D.R. Wijewardena Mawatha, Colombo 10", phone: "+94-11-2326601", managerName: "W.A.C. Rodrigo", isActive: true },
@@ -152,15 +249,18 @@ function buildEmployees(branchIds: number[], shiftIds: number[], deptNames: stri
 router.post("/import", async (_req, res) => {
   try {
     await db.transaction(async (tx) => {
-      const insertedBranches = await tx.insert(branches).values(SL_BRANCHES).onConflictDoNothing().returning();
-      const branchIds = insertedBranches.map(b => b.id);
+      await tx.insert(branches).values(SL_BRANCHES).onConflictDoNothing();
+      const allBranches = await tx.select({ id: branches.id }).from(branches);
+      const branchIds = allBranches.map(b => b.id);
 
-      const insertedShifts = await tx.insert(shifts).values(SL_SHIFTS).onConflictDoNothing().returning();
-      const shiftIds = insertedShifts.map(s => s.id);
+      await tx.insert(shifts).values(SL_SHIFTS).onConflictDoNothing();
+      const allShifts = await tx.select({ id: shifts.id }).from(shifts);
+      const shiftIds = allShifts.map(s => s.id);
 
-      const insertedDepts = await tx.insert(departments).values(SL_DEPARTMENTS).onConflictDoNothing().returning();
+      await tx.insert(departments).values(SL_DEPARTMENTS).onConflictDoNothing();
+      const allDepts = await tx.select({ id: departments.id, code: departments.code }).from(departments);
       const deptMap: Record<string, number> = {};
-      insertedDepts.forEach(d => { deptMap[d.code] = d.id; });
+      allDepts.forEach(d => { deptMap[d.code] = d.id; });
 
       const desigRows = SL_DESIGNATIONS.map(d => {
         const deptCode = d.code === "PMG" || d.code === "DPMG" ? "ADM"
@@ -202,9 +302,16 @@ router.post("/import", async (_req, res) => {
           workingDays: JSON.stringify(["monday","tuesday","wednesday","thursday","friday","saturday"]),
         });
       }
+
+      await tx.delete(attendanceRecords);
+      const allEmps = await tx.select({ id: employees.id, branchId: employees.branchId }).from(employees);
+      const attendanceBatch = buildAttendance(allEmps);
+      for (let i = 0; i < attendanceBatch.length; i += 200) {
+        await tx.insert(attendanceRecords).values(attendanceBatch.slice(i, i + 200));
+      }
     });
 
-    res.json({ success: true, message: "Sri Lanka Post mock data imported successfully" });
+    res.json({ success: true, message: "Sri Lanka Post mock data imported successfully (including attendance records)" });
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, message: "Failed to import mock data" });
@@ -214,6 +321,7 @@ router.post("/import", async (_req, res) => {
 router.delete("/clear", async (_req, res) => {
   try {
     await db.transaction(async (tx) => {
+      await tx.delete(attendanceRecords);
       await tx.delete(employees);
       await tx.delete(designations);
       await tx.delete(departments);
@@ -221,7 +329,7 @@ router.delete("/clear", async (_req, res) => {
       await tx.delete(branches);
       await tx.delete(holidays);
     });
-    res.json({ success: true, message: "All mock data cleared successfully" });
+    res.json({ success: true, message: "All data cleared successfully" });
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, message: "Failed to clear data" });

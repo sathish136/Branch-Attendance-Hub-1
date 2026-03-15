@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useListHolidays, useCreateHoliday, useDeleteHoliday } from "@workspace/api-client-react";
 import { PageHeader, Card, Button, Input, Label, Select } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
   Calendar, Plus, Trash2, Copy, Check, Building, Clock,
   Fingerprint, Users, ShieldCheck, FileText, Briefcase, ChevronRight,
-  Database, Download, AlertTriangle, CheckCircle2
+  Database, Download, AlertTriangle, CheckCircle2, Upload, X
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -49,6 +49,29 @@ export default function Settings() {
   const [attSaved,  setAttSaved]  = useState(false);
   const [hrSaved,   setHrSaved]   = useState(false);
   const [zkSaved,   setZkSaved]   = useState(false);
+
+  const [logoUrl, setLogoUrl] = useState<string>(() => localStorage.getItem("org_logo") || "");
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      setLogoUrl(result);
+      localStorage.setItem("org_logo", result);
+      window.dispatchEvent(new Event("org_logo_updated"));
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearLogo() {
+    setLogoUrl("");
+    localStorage.removeItem("org_logo");
+    window.dispatchEvent(new Event("org_logo_updated"));
+    if (logoInputRef.current) logoInputRef.current.value = "";
+  }
 
   const [mockImporting, setMockImporting] = useState(false);
   const [mockClearing,  setMockClearing]  = useState(false);
@@ -163,7 +186,45 @@ export default function Settings() {
 
         {/* ── Organisation ─────────────────────────────────── */}
         {activeTab === "organisation" && (
-          <Card className="p-5">
+          <Card className="p-5 space-y-5">
+            <div>
+              <Label className="text-xs mb-2 block">Organisation Logo</Label>
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 rounded-xl border-2 border-dashed border-border flex items-center justify-center bg-muted overflow-hidden shrink-0">
+                  {logoUrl
+                    ? <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
+                    : <Building className="w-8 h-8 text-muted-foreground" />}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    {logoUrl ? "Change Logo" : "Upload Logo"}
+                  </button>
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={clearLogo}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-200 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Remove Logo
+                    </button>
+                  )}
+                  <p className="text-xs text-muted-foreground">PNG, JPG or SVG. Max 2 MB. Shown in sidebar.</p>
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleLogoChange}
+                  />
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div>
                 <Label className="text-xs">Organization Name</Label>

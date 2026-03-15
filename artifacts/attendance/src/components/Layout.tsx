@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useState, useEffect } from "react";
 import { 
   LayoutDashboard, 
   Users, 
@@ -29,16 +30,28 @@ const NAV_ITEMS = [
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const [logoUrl, setLogoUrl] = useState<string>(() => localStorage.getItem("org_logo") || "");
+
+  useEffect(() => {
+    const handler = () => setLogoUrl(localStorage.getItem("org_logo") || "");
+    window.addEventListener("org_logo_updated", handler);
+    return () => window.removeEventListener("org_logo_updated", handler);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
       {/* Sidebar */}
       <aside className="w-full md:w-64 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border shadow-xl z-10 shrink-0">
-        <div className="p-6 flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold shadow-md">
-            P
+        <div className="p-5 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center shadow-md overflow-hidden shrink-0">
+            {logoUrl
+              ? <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-0.5" />
+              : <span className="font-bold text-base text-white">P</span>}
           </div>
-          <span className="font-bold text-lg tracking-tight text-white">PostHRMS</span>
+          <div className="min-w-0">
+            <span className="font-bold text-sm tracking-tight text-white block truncate">PostHRMS</span>
+            <span className="text-[10px] text-white/50 block truncate">Sri Lanka Post</span>
+          </div>
         </div>
         
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
