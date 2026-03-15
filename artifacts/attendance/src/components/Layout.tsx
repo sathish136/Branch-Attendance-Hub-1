@@ -223,7 +223,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                         {/* Concave corner — top */}
                         {isActive && (
                           <span className="pointer-events-none absolute z-[2]"
-                            style={{ right: 0, top: -10, width: 10, height: 10,
+                            style={{ right: -8, top: -10, width: 10, height: 10,
                               background: "hsl(var(--sidebar))", borderBottomLeftRadius: 10 }} />
                         )}
                         <Link
@@ -243,7 +243,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                         {/* Concave corner — bottom */}
                         {isActive && (
                           <span className="pointer-events-none absolute z-[2]"
-                            style={{ right: 0, bottom: -10, width: 10, height: 10,
+                            style={{ right: -8, bottom: -10, width: 10, height: 10,
                               background: "hsl(var(--sidebar))", borderTopLeftRadius: 10 }} />
                         )}
                         {/* Tooltip */}
@@ -264,7 +264,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       {/* Concave corner — top */}
                       {isActive && (
                         <span className="pointer-events-none absolute z-[2]"
-                          style={{ right: 0, top: -12, width: 12, height: 12,
+                          style={{ right: -12, top: -12, width: 12, height: 12,
                             background: "hsl(var(--sidebar))", borderBottomLeftRadius: 12 }} />
                       )}
                       <Link
@@ -286,7 +286,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       {/* Concave corner — bottom */}
                       {isActive && (
                         <span className="pointer-events-none absolute z-[2]"
-                          style={{ right: 0, bottom: -12, width: 12, height: 12,
+                          style={{ right: -12, bottom: -12, width: 12, height: 12,
                             background: "hsl(var(--sidebar))", borderTopLeftRadius: 12 }} />
                       )}
                     </div>
