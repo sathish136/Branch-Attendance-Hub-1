@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useListEmployees, useCreateEmployee, useUpdateEmployee, useDeleteEmployee,
@@ -7,8 +7,9 @@ import {
 import { PageHeader, Card, Button, Input, Label, Select } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
-  Search, Plus, Edit2, Trash2, Download, User, Briefcase, Phone, Mail,
-  MapPin, CreditCard, ChevronDown, X, Building2, Users, Layers, Eye
+  Search, Plus, Edit2, Trash2, Download, Mail,
+  MapPin, ChevronDown, X, Building2, Users, Layers,
+  FileText, Upload, CheckCircle2, AlertCircle, Eye, UserCircle
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -32,6 +33,12 @@ const DEPT_LIST = ["Operations","Finance & Accounts","Human Resources","Informat
 const DESIGNATION_LIST = ["Postmaster","Assistant Postmaster","Supervisor","Postal Officer","Counter Clerk","Sorting Officer","Delivery Agent","Data Entry Operator","Accounts Officer","HR Officer","IT Officer","Driver","Security Officer","Clerical Assistant"];
 
 function apiUrl(path: string) { return `${BASE}/api${path}`; }
+
+function empDisplayName(emp: any) {
+  if (emp.firstName && emp.lastName) return `${emp.firstName} ${emp.lastName}`;
+  return emp.fullName || "";
+}
+
 function useGet(key: string[], path: string) {
   return useQuery({ queryKey: key, queryFn: () => fetch(apiUrl(path)).then(r => r.json()) });
 }
@@ -46,22 +53,90 @@ function useMut(method: string, path: string, qk: string[]) {
   });
 }
 
-// ── Employee Profile Drawer ───────────────────────────────────────────────────
+// ── Document Upload Row ────────────────────────────────────────────────────────
+function DocUploadRow({
+  label, fieldName, currentUrl, empId, onUploaded
+}: {
+  label: string; fieldName: string; currentUrl?: string; empId?: number; onUploaded: () => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !empId) return;
+    setUploading(true); setError("");
+    try {
+      const fd = new FormData();
+      fd.append(fieldName, file);
+      const resp = await fetch(apiUrl(`/employees/${empId}/documents`), { method: "POST", body: fd });
+      if (!resp.ok) throw new Error("Upload failed");
+      onUploaded();
+    } catch (err: any) {
+      setError(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/20">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+          <FileText className="w-4 h-4 text-primary" />
+        </div>
+        <div>
+          <p className="text-xs font-medium">{label}</p>
+          {currentUrl ? (
+            <a href={currentUrl} target="_blank" rel="noreferrer"
+              className="text-xs text-primary flex items-center gap-1 hover:underline">
+              <Eye className="w-3 h-3" /> View uploaded file
+            </a>
+          ) : (
+            <p className="text-xs text-muted-foreground">No file uploaded</p>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {currentUrl && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+        {error && <span className="text-xs text-red-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{error}</span>}
+        <input ref={fileRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+          onChange={handleFile} />
+        <Button variant="outline" className="text-xs h-7 px-2.5" disabled={uploading || !empId}
+          onClick={() => fileRef.current?.click()}>
+          {uploading ? (
+            <span className="flex items-center gap-1.5"><Upload className="w-3 h-3 animate-pulse" />Uploading...</span>
+          ) : (
+            <span className="flex items-center gap-1.5"><Upload className="w-3 h-3" />{currentUrl ? "Replace" : "Upload"}</span>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Employee Profile Drawer ────────────────────────────────────────────────────
 const EMPTY_EMP = {
-  employeeId:"", fullName:"", gender:"male", dateOfBirth:"", phone:"", email:"",
-  address:"", nicNumber:"", epfNumber:"", etfNumber:"",
+  employeeId:"", firstName:"", lastName:"", gender:"male", dateOfBirth:"", phone:"", email:"",
+  address:"", aadharNumber:"", panNumber:"",
   designation:"", department:"", branchId:1, shiftId:"", joiningDate:"",
   employeeType:"permanent", reportingManagerId:"", biometricId:"", status:"active",
 };
 
 function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branches: any[]; onClose: () => void; onSaved: () => void }) {
-  const [tab, setTab] = useState<"personal"|"professional">("personal");
+  const [tab, setTab] = useState<"personal"|"professional"|"documents">("personal");
   const [form, setForm] = useState(emp ? {
     ...EMPTY_EMP, ...emp,
+    firstName: emp.firstName || "",
+    lastName: emp.lastName || (emp.fullName && !emp.firstName ? emp.fullName : ""),
     branchId: emp.branchId || 1,
     dateOfBirth: emp.dateOfBirth || "",
     shiftId: emp.shiftId || "",
     reportingManagerId: emp.reportingManagerId || "",
+    aadharNumber: emp.aadharNumber || "",
+    panNumber: emp.panNumber || "",
   } : { ...EMPTY_EMP });
   const createEmp = useCreateEmployee();
   const updateEmp = useUpdateEmployee();
@@ -71,6 +146,7 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
   function handleSave() {
     const payload = {
       ...form,
+      fullName: `${form.firstName} ${form.lastName}`.trim() || form.firstName || "Employee",
       branchId: Number(form.branchId),
       shiftId: form.shiftId ? Number(form.shiftId) : null,
       reportingManagerId: form.reportingManagerId ? Number(form.reportingManagerId) : null,
@@ -83,6 +159,7 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
   }
 
   const isPending = createEmp.isPending || updateEmp.isPending;
+  const isSaved = !!emp?.id;
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -90,21 +167,26 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
       <div className="w-full max-w-2xl bg-background border-l border-border shadow-2xl flex flex-col h-full overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/30">
-          <div>
-            <h2 className="font-bold text-base">{emp ? "Edit Employee Profile" : "Add New Employee"}</h2>
-            {emp && <p className="text-xs text-muted-foreground">{emp.employeeId} · {emp.fullName}</p>}
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+              <UserCircle className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-bold text-base">{emp ? "Edit Employee Profile" : "Add New Employee"}</h2>
+              {emp && <p className="text-xs text-muted-foreground">{emp.employeeId} · {empDisplayName(emp)}</p>}
+            </div>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-muted rounded-lg"><X className="w-4 h-4" /></button>
         </div>
 
         {/* Tab switch */}
         <div className="flex border-b border-border px-5 bg-card">
-          {(["personal","professional"] as const).map(t => (
+          {(["personal","professional","documents"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={cn("px-4 py-2.5 text-xs font-medium capitalize border-b-2 -mb-px transition-colors",
+              className={cn("px-4 py-2.5 text-xs font-medium capitalize border-b-2 -mb-px transition-colors whitespace-nowrap",
                 tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
               )}>
-              {t === "personal" ? "👤 Personal Details" : "💼 Professional Details"}
+              {t === "personal" ? "👤 Personal" : t === "professional" ? "💼 Professional" : "📄 Documents"}
             </button>
           ))}
         </div>
@@ -114,9 +196,13 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
           {tab === "personal" && (
             <>
               <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <Label className="text-xs">Full Name *</Label>
-                  <Input placeholder="e.g. Nuwan Karunaratne" value={form.fullName} onChange={e => set("fullName", e.target.value)} />
+                <div>
+                  <Label className="text-xs">First Name *</Label>
+                  <Input placeholder="e.g. Rahul" value={form.firstName} onChange={e => set("firstName", e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Last Name *</Label>
+                  <Input placeholder="e.g. Sharma" value={form.lastName} onChange={e => set("lastName", e.target.value)} />
                 </div>
                 <div>
                   <Label className="text-xs">Gender</Label>
@@ -132,32 +218,28 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
                 </div>
                 <div>
                   <Label className="text-xs">Phone *</Label>
-                  <Input placeholder="07X-XXXXXXX" value={form.phone} onChange={e => set("phone", e.target.value)} />
+                  <Input placeholder="9XXXXXXXXX" value={form.phone} onChange={e => set("phone", e.target.value)} />
                 </div>
                 <div>
                   <Label className="text-xs">Email *</Label>
-                  <Input type="email" placeholder="name@slpost.lk" value={form.email} onChange={e => set("email", e.target.value)} />
+                  <Input type="email" placeholder="name@indiapost.gov.in" value={form.email} onChange={e => set("email", e.target.value)} />
                 </div>
                 <div className="col-span-2">
                   <Label className="text-xs">Address</Label>
-                  <Input placeholder="No. 1, Main Street, Colombo" value={form.address} onChange={e => set("address", e.target.value)} />
+                  <Input placeholder="House No., Street, City, State, PIN" value={form.address} onChange={e => set("address", e.target.value)} />
                 </div>
               </div>
 
               <div className="border-t border-border pt-4">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Sri Lanka Identity Documents</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Identity Documents</p>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-xs">NIC Number</Label>
-                    <Input placeholder="9XXXXXXXXV or 2XXXXXXXXX" value={form.nicNumber} onChange={e => set("nicNumber", e.target.value)} />
+                    <Label className="text-xs">Aadhar Number</Label>
+                    <Input placeholder="XXXX XXXX XXXX" value={form.aadharNumber} onChange={e => set("aadharNumber", e.target.value)} maxLength={14} />
                   </div>
                   <div>
-                    <Label className="text-xs">EPF Number</Label>
-                    <Input placeholder="EPF-XXXXXX" value={form.epfNumber} onChange={e => set("epfNumber", e.target.value)} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">ETF Number</Label>
-                    <Input placeholder="ETF-XXXXXX" value={form.etfNumber} onChange={e => set("etfNumber", e.target.value)} />
+                    <Label className="text-xs">PAN Number</Label>
+                    <Input placeholder="ABCDE1234F" value={form.panNumber} onChange={e => set("panNumber", e.target.value.toUpperCase())} maxLength={10} />
                   </div>
                 </div>
               </div>
@@ -168,7 +250,7 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs">Employee ID *</Label>
-                <Input placeholder="EMP-0125" value={form.employeeId} onChange={e => set("employeeId", e.target.value)} disabled={!!emp} />
+                <Input placeholder="EMP-0001" value={form.employeeId} onChange={e => set("employeeId", e.target.value)} disabled={!!emp} />
               </div>
               <div>
                 <Label className="text-xs">Employee Status</Label>
@@ -217,21 +299,69 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
               </div>
             </div>
           )}
+
+          {tab === "documents" && (
+            <div className="space-y-3">
+              {!isSaved ? (
+                <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                  <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm font-medium text-muted-foreground">Save employee profile first</p>
+                  <p className="text-xs text-muted-foreground mt-1">Create the employee record before uploading documents.</p>
+                  <Button onClick={handleSave} disabled={isPending} className="mt-3 text-xs h-8">
+                    {isPending ? "Saving..." : "Save Profile Now"}
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">Upload documents in PDF, JPG, PNG, or DOC format (max 10MB each).</p>
+                  <DocUploadRow label="Aadhar Card" fieldName="aadharDoc"
+                    currentUrl={emp?.aadharDocUrl} empId={emp?.id} onUploaded={onSaved} />
+                  <DocUploadRow label="PAN Card" fieldName="panDoc"
+                    currentUrl={emp?.panDocUrl} empId={emp?.id} onUploaded={onSaved} />
+                  <DocUploadRow label="Certificates" fieldName="certificatesDoc"
+                    currentUrl={emp?.certificatesDocUrl} empId={emp?.id} onUploaded={onSaved} />
+                  <DocUploadRow label="Resume / CV" fieldName="resumeDoc"
+                    currentUrl={emp?.resumeDocUrl} empId={emp?.id} onUploaded={onSaved} />
+
+                  <div className="rounded-lg bg-muted/50 p-3 mt-2">
+                    <p className="text-xs font-medium mb-1.5">Document Status</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { label: "Aadhar Card", url: emp?.aadharDocUrl },
+                        { label: "PAN Card", url: emp?.panDocUrl },
+                        { label: "Certificates", url: emp?.certificatesDocUrl },
+                        { label: "Resume / CV", url: emp?.resumeDocUrl },
+                      ].map(doc => (
+                        <div key={doc.label} className="flex items-center gap-1.5 text-xs">
+                          {doc.url
+                            ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                            : <AlertCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                          <span className={doc.url ? "text-foreground" : "text-muted-foreground"}>{doc.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border px-5 py-4 flex justify-end gap-3 bg-muted/20">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={isPending}>
-            {isPending ? "Saving..." : emp ? "Update Employee" : "Create Employee"}
-          </Button>
-        </div>
+        {tab !== "documents" && (
+          <div className="border-t border-border px-5 py-4 flex justify-end gap-3 bg-muted/20">
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button onClick={handleSave} disabled={isPending}>
+              {isPending ? "Saving..." : emp ? "Update Employee" : "Create Employee"}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Departments Tab ───────────────────────────────────────────────────────────
+// ── Departments Tab ────────────────────────────────────────────────────────────
 function DepartmentsTab() {
   const qc = useQueryClient();
   const { data: depts, isLoading } = useGet(["departments"], "/departments");
@@ -301,6 +431,9 @@ function DepartmentsTab() {
                   </td>
                 </tr>
               ))}
+              {!(depts || []).length && (
+                <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No departments found.</td></tr>
+              )}
             </tbody>
           </table>
         )}
@@ -309,7 +442,7 @@ function DepartmentsTab() {
   );
 }
 
-// ── Designations Tab ──────────────────────────────────────────────────────────
+// ── Designations Tab ───────────────────────────────────────────────────────────
 function DesignationsTab() {
   const qc = useQueryClient();
   const { data: desigs, isLoading } = useGet(["designations"], "/designations");
@@ -399,6 +532,9 @@ function DesignationsTab() {
                   </td>
                 </tr>
               ))}
+              {!(desigs || []).length && (
+                <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">No designations found.</td></tr>
+              )}
             </tbody>
           </table>
         )}
@@ -407,7 +543,7 @@ function DesignationsTab() {
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// ── Main Page ──────────────────────────────────────────────────────────────────
 export default function Employees() {
   const [activeTab, setActiveTab] = useState<Tab>("Employee List");
   const [search, setSearch] = useState("");
@@ -433,9 +569,10 @@ export default function Employees() {
     if (!search) return list;
     const s = search.toLowerCase();
     return list.filter((e: any) =>
-      e.fullName.toLowerCase().includes(s) ||
+      empDisplayName(e).toLowerCase().includes(s) ||
       e.employeeId.toLowerCase().includes(s) ||
-      (e.nicNumber || "").toLowerCase().includes(s) ||
+      (e.aadharNumber || "").replace(/\s/g,"").includes(s.replace(/\s/g,"")) ||
+      (e.panNumber || "").toLowerCase().includes(s) ||
       (e.email || "").toLowerCase().includes(s)
     );
   }, [data, search]);
@@ -452,11 +589,12 @@ export default function Employees() {
   }, [data]);
 
   function exportCSV() {
-    const headers = ["Employee ID","Full Name","Gender","Designation","Department","Branch","Type","Status","Phone","Email","NIC","EPF","ETF","Joining Date"];
+    const headers = ["Employee ID","First Name","Last Name","Gender","Designation","Department","Branch","Type","Status","Phone","Email","Aadhar","PAN","Joining Date"];
     const rows = employees.map((e: any) => [
-      e.employeeId, e.fullName, e.gender, e.designation, e.department,
+      e.employeeId, e.firstName || "", e.lastName || e.fullName || "",
+      e.gender, e.designation, e.department,
       e.branchName, e.employeeType, e.status, e.phone, e.email,
-      e.nicNumber || "", e.epfNumber || "", e.etfNumber || "", e.joiningDate
+      e.aadharNumber || "", e.panNumber || "", e.joiningDate
     ]);
     const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(",")).join("\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
@@ -465,18 +603,19 @@ export default function Employees() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Employee Management" description="Manage Sri Lanka Post staff profiles, departments, and designations." />
+      <PageHeader title="Employee Management" description="Manage staff profiles, departments, and designations." />
 
       {/* Stats Bar */}
       <div className="grid grid-cols-5 gap-3">
         {[
-          { label: "Total Employees", val: stats.total, cls: "text-foreground", bg: "bg-card" },
-          { label: "Active",    val: stats.active,     cls: "text-green-600",  bg: "bg-green-50" },
-          { label: "On Leave",  val: stats.on_leave,   cls: "text-yellow-600", bg: "bg-yellow-50" },
-          { label: "Resigned",  val: stats.resigned,   cls: "text-orange-600", bg: "bg-orange-50" },
-          { label: "Terminated",val: stats.terminated, cls: "text-red-600",    bg: "bg-red-50" },
+          { label: "Total Employees", val: stats.total, cls: "text-foreground",   bg: "bg-card" },
+          { label: "Active",          val: stats.active,     cls: "text-green-600",  bg: "bg-green-50" },
+          { label: "On Leave",        val: stats.on_leave,   cls: "text-yellow-600", bg: "bg-yellow-50" },
+          { label: "Resigned",        val: stats.resigned,   cls: "text-orange-600", bg: "bg-orange-50" },
+          { label: "Terminated",      val: stats.terminated, cls: "text-red-600",    bg: "bg-red-50" },
         ].map(s => (
-          <button key={s.label} onClick={() => { setFilterStatus(s.label === "Total Employees" ? "" : s.label.toLowerCase().replace(" ","_")); setActiveTab("Employee List"); }}
+          <button key={s.label}
+            onClick={() => { setFilterStatus(s.label === "Total Employees" ? "" : s.label.toLowerCase().replace(" ","_")); setActiveTab("Employee List"); }}
             className={cn("rounded-xl border border-border p-3 text-center hover:shadow-md transition-shadow cursor-pointer", s.bg)}>
             <p className={cn("text-2xl font-bold", s.cls)}>{s.val}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
@@ -517,7 +656,7 @@ export default function Employees() {
           <Card className="p-3 flex flex-wrap gap-2 items-center">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <Input placeholder="Search name, ID, NIC, email..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-8 text-xs" />
+              <Input placeholder="Search name, ID, Aadhar, PAN, email..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-8 text-xs" />
             </div>
             <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="h-8 text-xs w-36">
               <option value="">All Status</option>
@@ -554,7 +693,7 @@ export default function Employees() {
                 <table className="w-full text-xs">
                   <thead className="bg-muted/50 sticky top-0">
                     <tr>
-                      {["Emp ID","Full Name","Designation / Dept","Branch","Type","NIC","Status","Actions"].map(h => (
+                      {["Emp ID","Name","Designation / Dept","Branch","Type","Aadhar / PAN","Status","Actions"].map(h => (
                         <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -564,7 +703,7 @@ export default function Employees() {
                       <tr key={emp.id} className="hover:bg-muted/30 transition-colors group">
                         <td className="px-3 py-2.5 font-mono text-xs text-primary font-medium">{emp.employeeId}</td>
                         <td className="px-3 py-2.5">
-                          <div className="font-medium">{emp.fullName}</div>
+                          <div className="font-medium">{empDisplayName(emp)}</div>
                           <div className="text-muted-foreground flex items-center gap-1">
                             <Mail className="w-2.5 h-2.5" /> {emp.email}
                           </div>
@@ -581,7 +720,10 @@ export default function Employees() {
                             {emp.employeeType?.[0]?.toUpperCase() + emp.employeeType?.slice(1) || "Permanent"}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5 font-mono text-muted-foreground">{emp.nicNumber || "—"}</td>
+                        <td className="px-3 py-2.5 font-mono text-muted-foreground text-xs">
+                          <div>{emp.aadharNumber || "—"}</div>
+                          {emp.panNumber && <div className="text-primary">{emp.panNumber}</div>}
+                        </td>
                         <td className="px-3 py-2.5">
                           <span className={cn("px-2 py-0.5 rounded text-xs font-medium", STATUS_STYLE[emp.status] || STATUS_STYLE.active)}>
                             {emp.status === "on_leave" ? "On Leave" : emp.status?.[0]?.toUpperCase() + emp.status?.slice(1) || "Active"}
@@ -589,10 +731,11 @@ export default function Employees() {
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => { setDrawerEmp(emp); setDrawerOpen(true); }} className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Edit">
+                            <button onClick={() => { setDrawerEmp(emp); setDrawerOpen(true); }}
+                              className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Edit Profile">
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
-                            <button onClick={() => { if(confirm(`Delete "${emp.fullName}"?`)) deleteEmp.mutate({ id: emp.id }, { onSuccess: () => refetch() }); }}
+                            <button onClick={() => { if(confirm(`Delete "${empDisplayName(emp)}"?`)) deleteEmp.mutate({ id: emp.id }, { onSuccess: () => refetch() }); }}
                               className="p-1.5 hover:bg-red-100 text-red-500 rounded" title="Delete">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>

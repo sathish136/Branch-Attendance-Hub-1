@@ -27,6 +27,8 @@ export const designations = pgTable("designations", {
 export const employees = pgTable("employees", {
   id: serial("id").primaryKey(),
   employeeId: text("employee_id").notNull().unique(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
   fullName: text("full_name").notNull(),
   designation: text("designation").notNull(),
   department: text("department").notNull(),
@@ -45,6 +47,12 @@ export const employees = pgTable("employees", {
   nicNumber: text("nic_number"),
   epfNumber: text("epf_number"),
   etfNumber: text("etf_number"),
+  aadharNumber: text("aadhar_number"),
+  panNumber: text("pan_number"),
+  aadharDocUrl: text("aadhar_doc_url"),
+  panDocUrl: text("pan_doc_url"),
+  certificatesDocUrl: text("certificates_doc_url"),
+  resumeDocUrl: text("resume_doc_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
