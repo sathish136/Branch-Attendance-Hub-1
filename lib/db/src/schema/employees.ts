@@ -4,6 +4,26 @@ import { z } from "zod/v4";
 import { branches } from "./branches";
 import { shifts } from "./shifts";
 
+export const departments = pgTable("departments", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  code: text("code").notNull().unique(),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const designations = pgTable("designations", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  code: text("code").notNull().unique(),
+  departmentId: integer("department_id").references(() => departments.id),
+  level: integer("level").default(1),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const employees = pgTable("employees", {
   id: serial("id").primaryKey(),
   employeeId: text("employee_id").notNull().unique(),
@@ -16,10 +36,23 @@ export const employees = pgTable("employees", {
   email: text("email").notNull(),
   phone: text("phone").notNull(),
   biometricId: text("biometric_id"),
-  status: text("status").notNull().$type<"active" | "inactive">().default("active"),
+  status: text("status").notNull().$type<"active" | "on_leave" | "resigned" | "terminated">().default("active"),
+  gender: text("gender").$type<"male" | "female" | "other">().default("male"),
+  dateOfBirth: date("date_of_birth"),
+  address: text("address"),
+  employeeType: text("employee_type").$type<"permanent" | "contract" | "casual">().default("permanent"),
+  reportingManagerId: integer("reporting_manager_id"),
+  nicNumber: text("nic_number"),
+  epfNumber: text("epf_number"),
+  etfNumber: text("etf_number"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: true, createdAt: true });
+export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true });
+export const insertDesignationSchema = createInsertSchema(designations).omit({ id: true, createdAt: true });
+
 export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 export type Employee = typeof employees.$inferSelect;
+export type Department = typeof departments.$inferSelect;
+export type Designation = typeof designations.$inferSelect;
