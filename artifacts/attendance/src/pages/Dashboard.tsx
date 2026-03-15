@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Users, UserCheck, UserMinus, Clock, CalendarDays, Building2,
   AlertTriangle, CheckCircle2, ArrowUp, ArrowDown, Minus,
-  Coffee, Timer, RefreshCw
+  Coffee, Timer, RefreshCw, Wifi, WifiOff, AlertCircle, Fingerprint
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +28,26 @@ type BranchStat = {
   present: number;
   absent: number;
   total: number;
+};
+
+type BiometricDevice = {
+  id: number;
+  name: string;
+  model: string;
+  serialNumber: string;
+  ipAddress: string;
+  port: number;
+  branchId: number;
+  branchName: string;
+  status: "online" | "offline" | "error";
+  lastSync: string | null;
+  isActive: boolean;
+};
+
+const DEVICE_STATUS_CFG = {
+  online:  { icon: Wifi,         cls: "text-emerald-600", bg: "bg-emerald-50",  badge: "bg-emerald-100 text-emerald-700",  dot: "bg-emerald-500" },
+  offline: { icon: WifiOff,      cls: "text-slate-400",   bg: "bg-slate-50",    badge: "bg-slate-100 text-slate-500",     dot: "bg-slate-400" },
+  error:   { icon: AlertCircle,  cls: "text-red-500",     bg: "bg-red-50",      badge: "bg-red-100 text-red-600",         dot: "bg-red-500" },
 };
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -96,6 +116,8 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [devices, setDevices] = useState<BiometricDevice[]>([]);
+  const [devLoading, setDevLoading] = useState(true);
 
   const today = new Date();
   const dayName = DAYS[today.getDay()];
@@ -115,11 +137,25 @@ export default function Dashboard() {
     }
   }, []);
 
+  const loadDevices = useCallback(async () => {
+    setDevLoading(true);
+    try {
+      const r = await fetch(api("/biometric/devices"));
+      const d = await r.json();
+      setDevices(Array.isArray(d) ? d : []);
+    } catch {
+      setDevices([]);
+    } finally {
+      setDevLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     load();
-    const t = setInterval(load, 60000);
+    loadDevices();
+    const t = setInterval(() => { load(); loadDevices(); }, 60000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, loadDevices]);
 
   const s = summary;
   const attPct = s?.attendancePercentageToday ?? 0;
@@ -395,6 +431,148 @@ export default function Dashboard() {
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
               Auto-refreshes every minute
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Biometric Device Status */}
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-indigo-50 rounded-lg">
+              <Fingerprint className="w-4 h-4 text-indigo-600" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-base text-foreground">Biometric Device Status</h2>
+              <p className="text-xs text-muted-foreground">Real-time status of all branch ZKTeco devices</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />Online
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-slate-400" />Offline
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-red-500" />Error
+            </span>
+          </div>
+        </div>
+
+        {devLoading ? (
+          <div className="flex items-center justify-center py-10 text-muted-foreground">
+            <RefreshCw className="w-4 h-4 animate-spin mr-2" />Loading devices…
+          </div>
+        ) : devices.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
+            <Fingerprint className="w-8 h-8 opacity-20" />
+            <p className="text-sm">No biometric devices configured yet.</p>
+            <p className="text-xs opacity-70">Add devices in the Biometric Devices page.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-0 divide-y sm:divide-y-0 divide-border">
+            {devices.map(dev => {
+              const cfg = DEVICE_STATUS_CFG[dev.status] ?? DEVICE_STATUS_CFG.offline;
+              const StatusIcon = cfg.icon;
+              const syncAgo = dev.lastSync
+                ? (() => {
+                    const diff = Math.floor((Date.now() - new Date(dev.lastSync).getTime()) / 1000);
+                    if (diff < 60) return `${diff}s ago`;
+                    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+                    return `${Math.floor(diff / 86400)}d ago`;
+                  })()
+                : "Never";
+              return (
+                <div key={dev.id} className={cn(
+                  "p-4 border-r border-border last:border-r-0 flex flex-col gap-3",
+                  !dev.isActive && "opacity-50"
+                )}>
+                  {/* Header row */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={cn("p-1.5 rounded-lg shrink-0", cfg.bg)}>
+                        <StatusIcon className={cn("w-3.5 h-3.5", cfg.cls)} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{dev.name}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{dev.branchName}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className={cn("flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full", cfg.badge)}>
+                        <span className={cn("w-1.5 h-1.5 rounded-full", cfg.dot,
+                          dev.status === "online" && "animate-pulse"
+                        )} />
+                        {dev.status.toUpperCase()}
+                      </span>
+                      {!dev.isActive && (
+                        <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">INACTIVE</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Details */}
+                  <div className="space-y-1.5 text-[10px] text-muted-foreground">
+                    <div className="flex justify-between">
+                      <span>Model</span>
+                      <span className="font-medium text-foreground">{dev.model}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>IP Address</span>
+                      <span className="font-mono text-foreground">{dev.ipAddress}:{dev.port}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Last Sync</span>
+                      <span className={cn("font-medium",
+                        dev.status === "online" ? "text-emerald-600"
+                        : dev.status === "error" ? "text-red-500"
+                        : "text-muted-foreground"
+                      )}>{syncAgo}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Method</span>
+                      <span className="font-medium text-foreground">
+                        {dev.pushMethod === "zkpush" ? "ZK Push" : "SDK"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Summary footer */}
+        {!devLoading && devices.length > 0 && (
+          <div className="px-5 py-3 border-t border-border bg-muted/20 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-5 text-xs text-muted-foreground">
+              <span>
+                <strong className="text-emerald-700">
+                  {devices.filter(d => d.status === "online").length}
+                </strong> online
+              </span>
+              <span>
+                <strong className="text-slate-600">
+                  {devices.filter(d => d.status === "offline").length}
+                </strong> offline
+              </span>
+              <span>
+                <strong className="text-red-600">
+                  {devices.filter(d => d.status === "error").length}
+                </strong> error
+              </span>
+              <span className="text-muted-foreground/60">·</span>
+              <span>{devices.length} total device{devices.length !== 1 ? "s" : ""}</span>
+            </div>
+            <button
+              onClick={loadDevices}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", devLoading && "animate-spin")} />
+              Refresh
+            </button>
           </div>
         )}
       </div>
