@@ -15,6 +15,7 @@ import Biometric from "@/pages/biometric/Biometric";
 import Settings from "@/pages/settings/Settings";
 import Users from "@/pages/users/Users";
 import Payroll from "@/pages/payroll/Payroll";
+import ActivityLogs from "@/pages/activity-logs/ActivityLogs";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -46,6 +47,7 @@ function Router() {
       <Route path="/biometric"><ProtectedRoute component={Biometric} /></Route>
       <Route path="/settings"><ProtectedRoute component={Settings} /></Route>
       <Route path="/users"><ProtectedRoute component={Users} /></Route>
+      <Route path="/activity-logs"><ProtectedRoute component={ActivityLogs} /></Route>
       <Route component={NotFound} />
     </Switch>
   );

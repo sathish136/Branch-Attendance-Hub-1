@@ -14,6 +14,7 @@ import departmentsRouter from "./departments.js";
 import designationsRouter from "./designations.js";
 import mockDataRouter from "./mock-data.js";
 import payrollRouter from "./payroll.js";
+import activityLogsRouter from "./activity-logs.js";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use("/departments", departmentsRouter);
 router.use("/designations", designationsRouter);
 router.use("/mock-data", mockDataRouter);
 router.use("/payroll", payrollRouter);
+router.use("/activity-logs", activityLogsRouter);
 
 export default router;

@@ -12,7 +12,8 @@ import {
   FileBarChart,
   LogOut,
   Bell,
-  Banknote
+  Banknote,
+  Activity
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { href: "/reports", label: "Reports", icon: FileBarChart },
   { href: "/biometric", label: "Biometric Devices", icon: Fingerprint },
   { href: "/users", label: "User Management", icon: Users },
+  { href: "/activity-logs", label: "Activity Logs", icon: Activity },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

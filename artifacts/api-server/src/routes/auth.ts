@@ -2,7 +2,8 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { systemUsers } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { hashPassword, generateToken, createSession, deleteSession, authMiddleware } from "../lib/auth.js";
+import { hashPassword, generateToken, createSession, deleteSession, authMiddleware, getSession } from "../lib/auth.js";
+import { logActivity } from "../lib/activity-logger.js";
 
 const router = Router();
 
@@ -15,17 +16,47 @@ router.post("/login", async (req, res) => {
     }
     const [user] = await db.select().from(systemUsers).where(eq(systemUsers.username, username));
     if (!user || !user.isActive) {
+      await logActivity({
+        username: username || "unknown",
+        fullName: "",
+        action: "login_failed",
+        module: "Auth",
+        description: `Failed login attempt for username: ${username}`,
+        status: "failed",
+        req,
+      });
       res.status(401).json({ message: "Invalid credentials", success: false });
       return;
     }
     const hash = hashPassword(password);
     if (user.passwordHash !== hash) {
+      await logActivity({
+        userId: user.id,
+        username: user.username,
+        fullName: user.fullName,
+        action: "login_failed",
+        module: "Auth",
+        description: `Incorrect password for user: ${user.username}`,
+        status: "failed",
+        req,
+      });
       res.status(401).json({ message: "Invalid credentials", success: false });
       return;
     }
     const token = generateToken(user.id);
     createSession(token, user.id);
     await db.update(systemUsers).set({ lastLogin: new Date() }).where(eq(systemUsers.id, user.id));
+    await logActivity({
+      userId: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      action: "login",
+      module: "Auth",
+      description: `User logged in successfully`,
+      sessionId: token.slice(0, 16),
+      status: "success",
+      req,
+    });
     const branchIds: number[] = JSON.parse(user.branchIds || "[]");
     res.cookie("auth_token", token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000, sameSite: "lax" });
     res.json({
@@ -47,9 +78,30 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.post("/logout", (req, res) => {
+router.post("/logout", async (req, res) => {
   const token = req.cookies?.["auth_token"] || req.headers.authorization?.replace("Bearer ", "");
-  if (token) deleteSession(token);
+  if (token) {
+    const session = getSession(token);
+    if (session) {
+      try {
+        const [user] = await db.select().from(systemUsers).where(eq(systemUsers.id, session.userId));
+        if (user) {
+          await logActivity({
+            userId: user.id,
+            username: user.username,
+            fullName: user.fullName,
+            action: "logout",
+            module: "Auth",
+            description: "User logged out",
+            sessionId: token.slice(0, 16),
+            status: "success",
+            req,
+          });
+        }
+      } catch {}
+    }
+    deleteSession(token);
+  }
   res.clearCookie("auth_token");
   res.json({ message: "Logged out", success: true });
 });
