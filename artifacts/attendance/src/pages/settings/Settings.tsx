@@ -196,32 +196,7 @@ export default function Settings() {
                     : <Building className="w-8 h-8 text-muted-foreground" />}
                 </div>
                 <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() => logoInputRef.current?.click()}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    {logoUrl ? "Change Logo" : "Upload Logo"}
-                  </button>
-                  {logoUrl && (
-                    <button
-                      type="button"
-                      onClick={clearLogo}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-200 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      Remove Logo
-                    </button>
-                  )}
-                  <p className="text-xs text-muted-foreground">PNG, JPG or SVG. Max 2 MB. Shown in sidebar.</p>
-                  <input
-                    ref={logoInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleLogoChange}
-                  />
+                  <p className="text-xs text-muted-foreground">Logo is displayed in the sidebar.</p>
                 </div>
               </div>
             </div>
