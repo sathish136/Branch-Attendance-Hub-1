@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useListHolidays, useCreateHoliday, useDeleteHoliday } from "@workspace/api-client-react";
 import { PageHeader, Card, Button, Input, Label, Select } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { Calendar, Plus, Trash2, Copy, Check, Building, Clock, Fingerprint, Sun, Moon } from "lucide-react";
+import { Calendar, Plus, Trash2, Copy, Check, Building, Clock, Fingerprint, Users, ShieldCheck, FileText, Briefcase } from "lucide-react";
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -27,6 +27,28 @@ export default function Settings() {
   const [copied, setCopied] = useState(false);
   const [newHoliday, setNewHoliday] = useState({ name: "", date: "", type: "national", description: "" });
   const [showAdd, setShowAdd] = useState(false);
+
+  const [hrSaved, setHrSaved] = useState(false);
+  const [hrSettings, setHrSettings] = useState({
+    annualLeave: "21",
+    sickLeave: "12",
+    casualLeave: "7",
+    maternityLeave: "180",
+    paternityLeave: "15",
+    probationPeriod: "6",
+    noticePeriod: "30",
+    retirementAge: "60",
+    epfEmployee: "12",
+    epfEmployer: "3.67",
+    esiEmployee: "0.75",
+    esiEmployer: "3.25",
+    workingHoursPerDay: "8",
+    workingDaysPerMonth: "26",
+    salaryDay: "1",
+    payrollCutoff: "25",
+  });
+  function setHr(k: string, v: string) { setHrSettings(s => ({ ...s, [k]: v })); }
+  function saveHrSettings() { setHrSaved(true); setTimeout(() => setHrSaved(false), 2500); }
 
   const serverUrl = `${window.location.origin}/api/biometric/push`;
 
@@ -57,7 +79,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-5 max-w-5xl mx-auto">
-      <PageHeader title="System Settings" description="Organization settings, Sri Lanka public holidays, and ZK biometric push configuration." />
+      <PageHeader title="System Settings" description="Organisation settings, HR policies, holidays, and biometric configuration." />
 
       {/* Organization Settings */}
       <Card className="p-5">
@@ -113,6 +135,115 @@ export default function Settings() {
         </div>
         <div className="flex justify-end mt-4">
           <Button className="text-xs">Save Organisation Settings</Button>
+        </div>
+      </Card>
+
+      {/* HR Settings */}
+      <Card className="p-5">
+        <h3 className="font-bold text-sm flex items-center gap-2 border-b border-border pb-3 mb-4">
+          <Users className="w-4 h-4 text-primary" />HR Policy Settings
+        </h3>
+
+        {/* Leave Policy */}
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-3">
+            <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Leave Policy (Days per Year)</p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <Label className="text-xs">Annual / Earned Leave</Label>
+              <Input type="number" value={hrSettings.annualLeave} onChange={e => setHr("annualLeave", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Sick / Medical Leave</Label>
+              <Input type="number" value={hrSettings.sickLeave} onChange={e => setHr("sickLeave", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Casual Leave</Label>
+              <Input type="number" value={hrSettings.casualLeave} onChange={e => setHr("casualLeave", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Maternity Leave (Days)</Label>
+              <Input type="number" value={hrSettings.maternityLeave} onChange={e => setHr("maternityLeave", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Paternity Leave (Days)</Label>
+              <Input type="number" value={hrSettings.paternityLeave} onChange={e => setHr("paternityLeave", e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        {/* Employment Terms */}
+        <div className="mb-5 border-t border-border pt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Employment Terms</p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <Label className="text-xs">Probation Period (Months)</Label>
+              <Input type="number" value={hrSettings.probationPeriod} onChange={e => setHr("probationPeriod", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Notice Period (Days)</Label>
+              <Input type="number" value={hrSettings.noticePeriod} onChange={e => setHr("noticePeriod", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Retirement Age</Label>
+              <Input type="number" value={hrSettings.retirementAge} onChange={e => setHr("retirementAge", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Working Hours / Day</Label>
+              <Input type="number" value={hrSettings.workingHoursPerDay} onChange={e => setHr("workingHoursPerDay", e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        {/* Payroll & Statutory */}
+        <div className="border-t border-border pt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <ShieldCheck className="w-3.5 h-3.5 text-muted-foreground" />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payroll & Statutory Deductions (%)</p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <Label className="text-xs">EPF — Employee %</Label>
+              <Input type="number" step="0.01" value={hrSettings.epfEmployee} onChange={e => setHr("epfEmployee", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">EPF — Employer %</Label>
+              <Input type="number" step="0.01" value={hrSettings.epfEmployer} onChange={e => setHr("epfEmployer", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">ESI — Employee %</Label>
+              <Input type="number" step="0.01" value={hrSettings.esiEmployee} onChange={e => setHr("esiEmployee", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">ESI — Employer %</Label>
+              <Input type="number" step="0.01" value={hrSettings.esiEmployer} onChange={e => setHr("esiEmployer", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Working Days / Month</Label>
+              <Input type="number" value={hrSettings.workingDaysPerMonth} onChange={e => setHr("workingDaysPerMonth", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Salary Credit Day</Label>
+              <Select value={hrSettings.salaryDay} onChange={e => setHr("salaryDay", e.target.value)}>
+                {[1,5,10,15,25,28,30].map(d => <option key={d} value={d}>Day {d} of Month</option>)}
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Payroll Cutoff Day</Label>
+              <Input type="number" value={hrSettings.payrollCutoff} onChange={e => setHr("payrollCutoff", e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end mt-4">
+          <Button className="text-xs flex items-center gap-2" onClick={saveHrSettings}>
+            {hrSaved ? <><Check className="w-3.5 h-3.5 text-green-400" />Saved!</> : "Save HR Settings"}
+          </Button>
         </div>
       </Card>
 

@@ -8,8 +8,9 @@ import { PageHeader, Card, Button, Input, Label, Select } from "@/components/ui"
 import { cn } from "@/lib/utils";
 import {
   Search, Plus, Edit2, Trash2, Download, Mail,
-  MapPin, ChevronDown, X, Building2, Users, Layers,
-  FileText, Upload, CheckCircle2, AlertCircle, Eye, UserCircle
+  MapPin, X, Building2, Users, Layers,
+  FileText, Upload, CheckCircle2, AlertCircle, UserCircle,
+  TrendingUp, UserCheck, UserX, Clock, Briefcase
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -53,6 +54,118 @@ function useMut(method: string, path: string, qk: string[]) {
   });
 }
 
+// ── Mini Dashboard ─────────────────────────────────────────────────────────────
+function EmployeeMiniDashboard({ allEmployees, onFilter }: { allEmployees: any[]; onFilter: (status: string) => void }) {
+  const total = allEmployees.length;
+  const active = allEmployees.filter(e => e.status === "active").length;
+  const onLeave = allEmployees.filter(e => e.status === "on_leave").length;
+  const resigned = allEmployees.filter(e => e.status === "resigned").length;
+  const terminated = allEmployees.filter(e => e.status === "terminated").length;
+
+  const permanent = allEmployees.filter(e => e.employeeType === "permanent").length;
+  const contract = allEmployees.filter(e => e.employeeType === "contract").length;
+  const casual = allEmployees.filter(e => e.employeeType === "casual").length;
+
+  const deptMap: Record<string, number> = {};
+  allEmployees.forEach(e => { if (e.department) deptMap[e.department] = (deptMap[e.department] || 0) + 1; });
+  const topDepts = Object.entries(deptMap).sort((a, b) => b[1] - a[1]).slice(0, 4);
+
+  const now = new Date();
+  const thisMonthJoined = allEmployees.filter(e => {
+    const d = e.joiningDate ? new Date(e.joiningDate) : null;
+    return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+
+  return (
+    <div className="grid grid-cols-12 gap-3 mb-1">
+      {/* Left: Status breakdown */}
+      <div className="col-span-12 md:col-span-5 bg-card border border-border rounded-xl p-4">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+          <Users className="w-3.5 h-3.5" /> Employee Status
+        </p>
+        <div className="flex items-end gap-3 mb-3">
+          <span className="text-4xl font-bold text-foreground">{total}</span>
+          <span className="text-xs text-muted-foreground mb-1">Total Employees</span>
+        </div>
+        <div className="space-y-2">
+          {[
+            { label: "Active",     val: active,     color: "bg-green-500",  status: "active" },
+            { label: "On Leave",   val: onLeave,    color: "bg-yellow-400", status: "on_leave" },
+            { label: "Resigned",   val: resigned,   color: "bg-orange-400", status: "resigned" },
+            { label: "Terminated", val: terminated, color: "bg-red-500",    status: "terminated" },
+          ].map(s => (
+            <button key={s.label} onClick={() => onFilter(s.status)}
+              className="w-full flex items-center gap-2 text-xs hover:bg-muted/40 rounded px-1 py-0.5 transition-colors group">
+              <div className={cn("w-2 h-2 rounded-full shrink-0", s.color)} />
+              <span className="flex-1 text-left text-muted-foreground group-hover:text-foreground">{s.label}</span>
+              <span className="font-semibold text-foreground">{s.val}</span>
+              <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className={cn("h-full rounded-full", s.color)} style={{ width: total ? `${(s.val / total) * 100}%` : "0%" }} />
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Middle: Type + New joins */}
+      <div className="col-span-12 md:col-span-3 flex flex-col gap-3">
+        <div className="bg-card border border-border rounded-xl p-4 flex-1">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+            <Briefcase className="w-3.5 h-3.5" /> Employment Type
+          </p>
+          <div className="space-y-2">
+            {[
+              { label: "Permanent", val: permanent, cls: "text-blue-600 bg-blue-50" },
+              { label: "Contract",  val: contract,  cls: "text-purple-600 bg-purple-50" },
+              { label: "Casual",    val: casual,    cls: "text-gray-600 bg-gray-50" },
+            ].map(t => (
+              <div key={t.label} className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">{t.label}</span>
+                <span className={cn("text-xs font-bold px-2 py-0.5 rounded", t.cls)}>{t.val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1 flex items-center gap-1.5">
+            <TrendingUp className="w-3.5 h-3.5" /> Joined This Month
+          </p>
+          <p className="text-3xl font-bold text-primary">{thisMonthJoined}</p>
+          <p className="text-xs text-muted-foreground">new employee{thisMonthJoined !== 1 ? "s" : ""}</p>
+        </div>
+      </div>
+
+      {/* Right: Department breakdown */}
+      <div className="col-span-12 md:col-span-4 bg-card border border-border rounded-xl p-4">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+          <Building2 className="w-3.5 h-3.5" /> Top Departments
+        </p>
+        {topDepts.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">No data yet</p>
+        ) : (
+          <div className="space-y-3">
+            {topDepts.map(([dept, count]) => (
+              <div key={dept}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs truncate max-w-[160px] text-muted-foreground">{dept}</span>
+                  <span className="text-xs font-bold text-foreground">{count}</span>
+                </div>
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full" style={{ width: `${total ? (count / total) * 100 : 0}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Active headcount</span>
+          <span className="text-xs font-bold text-green-600">{active} / {total}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Document Upload Row ────────────────────────────────────────────────────────
 function DocUploadRow({
   label, fieldName, currentUrl, empId, onUploaded
@@ -92,7 +205,7 @@ function DocUploadRow({
           {currentUrl ? (
             <a href={currentUrl} target="_blank" rel="noreferrer"
               className="text-xs text-primary flex items-center gap-1 hover:underline">
-              <Eye className="w-3 h-3" /> View uploaded file
+              View uploaded file
             </a>
           ) : (
             <p className="text-xs text-muted-foreground">No file uploaded</p>
@@ -165,7 +278,6 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/40" onClick={onClose} />
       <div className="w-full max-w-2xl bg-background border-l border-border shadow-2xl flex flex-col h-full overflow-hidden">
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/30">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
@@ -179,7 +291,6 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
           <button onClick={onClose} className="p-1.5 hover:bg-muted rounded-lg"><X className="w-4 h-4" /></button>
         </div>
 
-        {/* Tab switch */}
         <div className="flex border-b border-border px-5 bg-card">
           {(["personal","professional","documents"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
@@ -191,7 +302,6 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
           ))}
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
           {tab === "personal" && (
             <>
@@ -222,14 +332,13 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
                 </div>
                 <div>
                   <Label className="text-xs">Email *</Label>
-                  <Input type="email" placeholder="name@indiapost.gov.in" value={form.email} onChange={e => set("email", e.target.value)} />
+                  <Input type="email" placeholder="name@company.com" value={form.email} onChange={e => set("email", e.target.value)} />
                 </div>
                 <div className="col-span-2">
                   <Label className="text-xs">Address</Label>
                   <Input placeholder="House No., Street, City, State, PIN" value={form.address} onChange={e => set("address", e.target.value)} />
                 </div>
               </div>
-
               <div className="border-t border-border pt-4">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Identity Documents</p>
                 <div className="grid grid-cols-2 gap-4">
@@ -314,15 +423,10 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
               ) : (
                 <>
                   <p className="text-xs text-muted-foreground">Upload documents in PDF, JPG, PNG, or DOC format (max 10MB each).</p>
-                  <DocUploadRow label="Aadhar Card" fieldName="aadharDoc"
-                    currentUrl={emp?.aadharDocUrl} empId={emp?.id} onUploaded={onSaved} />
-                  <DocUploadRow label="PAN Card" fieldName="panDoc"
-                    currentUrl={emp?.panDocUrl} empId={emp?.id} onUploaded={onSaved} />
-                  <DocUploadRow label="Certificates" fieldName="certificatesDoc"
-                    currentUrl={emp?.certificatesDocUrl} empId={emp?.id} onUploaded={onSaved} />
-                  <DocUploadRow label="Resume / CV" fieldName="resumeDoc"
-                    currentUrl={emp?.resumeDocUrl} empId={emp?.id} onUploaded={onSaved} />
-
+                  <DocUploadRow label="Aadhar Card" fieldName="aadharDoc" currentUrl={emp?.aadharDocUrl} empId={emp?.id} onUploaded={onSaved} />
+                  <DocUploadRow label="PAN Card" fieldName="panDoc" currentUrl={emp?.panDocUrl} empId={emp?.id} onUploaded={onSaved} />
+                  <DocUploadRow label="Certificates" fieldName="certificatesDoc" currentUrl={emp?.certificatesDocUrl} empId={emp?.id} onUploaded={onSaved} />
+                  <DocUploadRow label="Resume / CV" fieldName="resumeDoc" currentUrl={emp?.resumeDocUrl} empId={emp?.id} onUploaded={onSaved} />
                   <div className="rounded-lg bg-muted/50 p-3 mt-2">
                     <p className="text-xs font-medium mb-1.5">Document Status</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -347,7 +451,6 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
           )}
         </div>
 
-        {/* Footer */}
         {tab !== "documents" && (
           <div className="border-t border-border px-5 py-4 flex justify-end gap-3 bg-muted/20">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -431,9 +534,7 @@ function DepartmentsTab() {
                   </td>
                 </tr>
               ))}
-              {!(depts || []).length && (
-                <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No departments found.</td></tr>
-              )}
+              {!(depts || []).length && <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No departments found.</td></tr>}
             </tbody>
           </table>
         )}
@@ -516,9 +617,7 @@ function DesignationsTab() {
                   <td className="px-3 py-2.5 font-mono text-primary font-medium">{d.code}</td>
                   <td className="px-3 py-2.5 font-medium">{d.name}</td>
                   <td className="px-3 py-2.5 text-muted-foreground">{d.departmentName || "—"}</td>
-                  <td className="px-3 py-2.5">
-                    <span className="px-2 py-0.5 bg-muted rounded text-xs">{LEVEL_LABEL[d.level] || "Staff"}</span>
-                  </td>
+                  <td className="px-3 py-2.5"><span className="px-2 py-0.5 bg-muted rounded text-xs">{LEVEL_LABEL[d.level] || "Staff"}</span></td>
                   <td className="px-3 py-2.5">
                     <span className={cn("px-2 py-0.5 rounded text-xs", d.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>
                       {d.isActive ? "Active" : "Inactive"}
@@ -532,9 +631,7 @@ function DesignationsTab() {
                   </td>
                 </tr>
               ))}
-              {!(desigs || []).length && (
-                <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">No designations found.</td></tr>
-              )}
+              {!(desigs || []).length && <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">No designations found.</td></tr>}
             </tbody>
           </table>
         )}
@@ -564,29 +661,19 @@ export default function Employees() {
   const { data, isLoading, refetch } = useListEmployees(params);
   const deleteEmp = useDeleteEmployee();
 
+  const allEmployees = data?.employees || [];
+
   const employees = useMemo(() => {
-    const list = data?.employees || [];
-    if (!search) return list;
+    if (!search) return allEmployees;
     const s = search.toLowerCase();
-    return list.filter((e: any) =>
+    return allEmployees.filter((e: any) =>
       empDisplayName(e).toLowerCase().includes(s) ||
       e.employeeId.toLowerCase().includes(s) ||
       (e.aadharNumber || "").replace(/\s/g,"").includes(s.replace(/\s/g,"")) ||
       (e.panNumber || "").toLowerCase().includes(s) ||
       (e.email || "").toLowerCase().includes(s)
     );
-  }, [data, search]);
-
-  const stats = useMemo(() => {
-    const all = data?.employees || [];
-    return {
-      total: all.length,
-      active: all.filter((e: any) => e.status === "active").length,
-      on_leave: all.filter((e: any) => e.status === "on_leave").length,
-      resigned: all.filter((e: any) => e.status === "resigned").length,
-      terminated: all.filter((e: any) => e.status === "terminated").length,
-    };
-  }, [data]);
+  }, [allEmployees, search]);
 
   function exportCSV() {
     const headers = ["Employee ID","First Name","Last Name","Gender","Designation","Department","Branch","Type","Status","Phone","Email","Aadhar","PAN","Joining Date"];
@@ -605,23 +692,11 @@ export default function Employees() {
     <div className="space-y-4">
       <PageHeader title="Employee Management" description="Manage staff profiles, departments, and designations." />
 
-      {/* Stats Bar */}
-      <div className="grid grid-cols-5 gap-3">
-        {[
-          { label: "Total Employees", val: stats.total, cls: "text-foreground",   bg: "bg-card" },
-          { label: "Active",          val: stats.active,     cls: "text-green-600",  bg: "bg-green-50" },
-          { label: "On Leave",        val: stats.on_leave,   cls: "text-yellow-600", bg: "bg-yellow-50" },
-          { label: "Resigned",        val: stats.resigned,   cls: "text-orange-600", bg: "bg-orange-50" },
-          { label: "Terminated",      val: stats.terminated, cls: "text-red-600",    bg: "bg-red-50" },
-        ].map(s => (
-          <button key={s.label}
-            onClick={() => { setFilterStatus(s.label === "Total Employees" ? "" : s.label.toLowerCase().replace(" ","_")); setActiveTab("Employee List"); }}
-            className={cn("rounded-xl border border-border p-3 text-center hover:shadow-md transition-shadow cursor-pointer", s.bg)}>
-            <p className={cn("text-2xl font-bold", s.cls)}>{s.val}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
-          </button>
-        ))}
-      </div>
+      {/* Mini Dashboard */}
+      <EmployeeMiniDashboard
+        allEmployees={allEmployees}
+        onFilter={status => { setFilterStatus(status); setActiveTab("Employee List"); }}
+      />
 
       {/* Tab Bar */}
       <div className="flex items-center gap-1 border-b border-border">
@@ -652,7 +727,6 @@ export default function Employees() {
 
       {activeTab === "Employee List" && (
         <>
-          {/* Filter Bar */}
           <Card className="p-3 flex flex-wrap gap-2 items-center">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -684,7 +758,6 @@ export default function Employees() {
             <span className="ml-auto text-xs text-muted-foreground">{employees.length} employee{employees.length !== 1 ? "s" : ""}</span>
           </Card>
 
-          {/* Table */}
           <Card className="overflow-hidden">
             {isLoading ? (
               <p className="text-center py-10 text-sm text-muted-foreground">Loading employees...</p>
@@ -704,9 +777,7 @@ export default function Employees() {
                         <td className="px-3 py-2.5 font-mono text-xs text-primary font-medium">{emp.employeeId}</td>
                         <td className="px-3 py-2.5">
                           <div className="font-medium">{empDisplayName(emp)}</div>
-                          <div className="text-muted-foreground flex items-center gap-1">
-                            <Mail className="w-2.5 h-2.5" /> {emp.email}
-                          </div>
+                          <div className="text-muted-foreground flex items-center gap-1"><Mail className="w-2.5 h-2.5" /> {emp.email}</div>
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="font-medium">{emp.designation}</div>
@@ -731,8 +802,7 @@ export default function Employees() {
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => { setDrawerEmp(emp); setDrawerOpen(true); }}
-                              className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Edit Profile">
+                            <button onClick={() => { setDrawerEmp(emp); setDrawerOpen(true); }} className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Edit">
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button onClick={() => { if(confirm(`Delete "${empDisplayName(emp)}"?`)) deleteEmp.mutate({ id: emp.id }, { onSuccess: () => refetch() }); }}
@@ -757,7 +827,6 @@ export default function Employees() {
       {activeTab === "Departments" && <DepartmentsTab />}
       {activeTab === "Designations" && <DesignationsTab />}
 
-      {/* Drawer */}
       {drawerOpen && (
         <EmployeeDrawer
           emp={drawerEmp}
