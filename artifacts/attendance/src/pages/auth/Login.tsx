@@ -142,7 +142,7 @@ export default function Login() {
               </div>
               <div>
                 <p className="font-bold text-white text-base tracking-tight leading-none">PostHRMS</p>
-                <p className="text-white/40 text-[11px] mt-0.5">Sri Lanka Post</p>
+                <p className="text-white/40 text-[11px] mt-0.5">Sri Lanka Post · Colombo District</p>
               </div>
             </div>
 
@@ -158,7 +158,7 @@ export default function Login() {
                 Platform
               </h1>
               <p className="mt-4 text-white/45 text-[14px] leading-relaxed max-w-xs">
-                Unified attendance, HR, and payroll management for Sri Lanka Post offices — powered by ZKTeco biometrics.
+                Unified attendance, HR, and payroll management for Sri Lanka Post — Colombo District offices, powered by ZKTeco biometrics.
               </p>
 
               {/* Feature list */}
@@ -205,7 +205,8 @@ export default function Login() {
             <div className="bg-white rounded-2xl shadow-xl shadow-black/8 p-8 border border-gray-100/80">
               <div className="mb-7">
                 <h2 className="text-[22px] font-bold text-gray-900 tracking-tight">Welcome back</h2>
-                <p className="text-gray-400 text-sm mt-1">Sign in to access your dashboard</p>
+                <p className="text-gray-400 text-sm mt-1">Sri Lanka Post · Colombo District</p>
+                <p className="text-gray-400 text-xs mt-0.5">Sign in to access your dashboard</p>
               </div>
 
               {error && (
@@ -280,7 +281,7 @@ export default function Login() {
 
             {/* Bottom note */}
             <p className="text-center text-[11px] text-gray-400 mt-5">
-              Sri Lanka Post © {new Date().getFullYear()} · PostHRMS v2.0
+              Sri Lanka Post · Colombo District © {new Date().getFullYear()} · PostHRMS v2.0
             </p>
           </div>
         </div>
