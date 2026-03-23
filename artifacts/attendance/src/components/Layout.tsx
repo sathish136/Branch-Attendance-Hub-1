@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useState, useEffect, useRef } from "react";
+import liveuLogo from "@/assets/liveu-logo.png";
 import {
   LayoutDashboard,
   Users,
@@ -84,7 +85,7 @@ function getInitials(name: string) {
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const [logoUrl, setLogoUrl] = useState<string>(() => localStorage.getItem("org_logo") || "");
+  const [logoUrl, setLogoUrl] = useState<string>(() => localStorage.getItem("org_logo") || liveuLogo);
   const [now, setNow] = useState(new Date());
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -174,7 +175,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <>
               <div className="flex-1 min-w-0">
                 <span className="font-bold text-sm tracking-tight text-white block truncate">PostHRMS</span>
-                <span className="text-[10px] text-white/50 block truncate">Sri Lanka Post</span>
+                <span className="text-[10px] text-white/50 block truncate">Liveu Pvr Ltd</span>
               </div>
               <button
                 onClick={() => setCollapsed(true)}
