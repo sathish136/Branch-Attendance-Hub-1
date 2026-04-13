@@ -188,15 +188,6 @@ function DevicesTab() {
         />
       )}
 
-      <div className="flex items-center gap-3 bg-green-50 border border-green-200 px-3 py-2 rounded-lg text-xs text-green-700">
-        <Radio className="w-3.5 h-3.5 text-green-600 shrink-0 animate-pulse" />
-        <span>
-          ADMS server listening on port <strong>3333</strong> — devices appear automatically when your ZKTeco machine connects to this port.
-        </span>
-        <button onClick={() => refetch()} className="ml-auto p-1 hover:bg-green-100 rounded" title="Refresh">
-          <RefreshCw className="w-3.5 h-3.5" />
-        </button>
-      </div>
 
       {successMsg && (
         <div className="flex items-start gap-2 bg-emerald-50 border border-emerald-200 px-4 py-3 rounded-lg text-sm text-emerald-800">
