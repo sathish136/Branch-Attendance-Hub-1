@@ -1,4 +1,5 @@
-import { pgTable, serial, text, integer, boolean, timestamp, date } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, boolean, timestamp, date, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { branches } from "./branches";
@@ -55,7 +56,11 @@ export const employees = pgTable("employees", {
   certificatesDocUrl: text("certificates_doc_url"),
   resumeDocUrl: text("resume_doc_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  uniqueIndex("employees_biometric_branch_unique")
+    .on(t.biometricId, t.branchId)
+    .where(sql`${t.biometricId} IS NOT NULL`),
+]);
 
 export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: true, createdAt: true });
 export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true });

@@ -8,24 +8,25 @@ const router = Router();
 
 /**
  * Update an employee's name from the ZKTeco device data.
- * Only updates if the employee's current name is the auto-generated placeholder ("Employee <pin>")
- * or if firstName/lastName haven't been set manually, so real names are preserved.
+ * Matches by (biometricId, branchId) so same PIN in different branches stays separate.
  */
-async function updateEmployeeNameFromDevice(pin: string, deviceName: string): Promise<void> {
+async function updateEmployeeNameFromDevice(pin: string, deviceName: string, branchId?: number | null): Promise<void> {
   if (!deviceName || !pin) return;
   try {
-    const [emp] = await db.select().from(employees).where(eq(employees.biometricId, pin));
+    const condition = branchId
+      ? and(eq(employees.biometricId, pin), eq(employees.branchId, branchId))
+      : eq(employees.biometricId, pin);
+    const [emp] = await db.select().from(employees).where(condition);
     if (!emp) return;
 
-    // Only update if the name is still the auto-generated placeholder or blank
     const isPlaceholder = emp.fullName === `Employee ${pin}` || !emp.fullName;
     const noFirstLastSet = !emp.firstName && !emp.lastName;
 
     if (isPlaceholder && noFirstLastSet) {
       await db.update(employees)
         .set({ fullName: deviceName })
-        .where(eq(employees.biometricId, pin));
-      console.log(`[ADMS] Updated employee name for PIN=${pin}: "${deviceName}"`);
+        .where(eq(employees.id, emp.id));
+      console.log(`[ADMS] Updated employee name for PIN=${pin} branch=${branchId}: "${deviceName}"`);
     }
   } catch (err) {
     console.error(`[ADMS] Failed to update employee name for PIN=${pin}:`, err);
@@ -177,7 +178,11 @@ router.post("/cdata", async (req: Request, res: Response) => {
         if (existing.length > 0) continue;
 
         const [emp] = await db.select().from(employees)
-          .where(eq(employees.biometricId, biometricId));
+          .where(
+            dev.branchId
+              ? and(eq(employees.biometricId, biometricId), eq(employees.branchId, dev.branchId))
+              : eq(employees.biometricId, biometricId)
+          );
 
         await db.insert(biometricLogs).values({
           deviceId: dev.id,
@@ -216,7 +221,7 @@ router.post("/cdata", async (req: Request, res: Response) => {
           const pin = match[1].trim();
           const name = match[2].trim();
           if (pin && name) {
-            await updateEmployeeNameFromDevice(pin, name);
+            await updateEmployeeNameFromDevice(pin, name, dev.branchId);
             updated++;
           }
         }
@@ -242,7 +247,7 @@ router.post("/cdata", async (req: Request, res: Response) => {
           const pin = parts[0].trim();
           const name = parts[1].trim();
           if (pin && name) {
-            await updateEmployeeNameFromDevice(pin, name);
+            await updateEmployeeNameFromDevice(pin, name, dev.branchId);
             updated++;
           }
         }

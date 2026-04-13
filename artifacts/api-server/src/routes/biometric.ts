@@ -180,7 +180,11 @@ router.post("/push-logs", async (req, res) => {
       if (existing) continue;
 
       const [emp] = await db.select({ id: employees.id }).from(employees)
-        .where(eq(employees.biometricId, pin));
+        .where(
+          dev.branchId
+            ? and(eq(employees.biometricId, pin), eq(employees.branchId, dev.branchId))
+            : eq(employees.biometricId, pin)
+        );
 
       await db.insert(biometricLogs).values({
         deviceId: dev.id,
