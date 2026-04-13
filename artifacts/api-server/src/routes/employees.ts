@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { employees, branches, shifts } from "@workspace/db/schema";
+import { employees, branches, shifts, attendanceRecords, payrollRecords, biometricLogs } from "@workspace/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
@@ -221,9 +221,16 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    await db.delete(employees).where(eq(employees.id, Number(req.params.id)));
+    const empId = Number(req.params.id);
+    await db.delete(attendanceRecords).where(eq(attendanceRecords.employeeId, empId));
+    await db.delete(payrollRecords).where(eq(payrollRecords.employeeId, empId));
+    await db.update(biometricLogs).set({ employeeId: null }).where(eq(biometricLogs.employeeId, empId));
+    await db.delete(employees).where(eq(employees.id, empId));
     res.json({ message: "Deleted", success: true });
-  } catch (e) { res.status(500).json({ message: "Error", success: false }); }
+  } catch (e: any) {
+    console.error("Delete employee error:", e?.message || e);
+    res.status(500).json({ message: e?.message || "Error deleting employee", success: false });
+  }
 });
 
 router.post("/:id/documents", upload.fields([
