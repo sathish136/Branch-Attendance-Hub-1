@@ -22,7 +22,7 @@ const TYPE_STYLE: Record<string, string> = {
 const POYA_ICON = "🌕";
 function isPoya(name: string) { return name.toLowerCase().includes("poya"); }
 
-type SettingsTab = "organisation" | "attendance" | "hr" | "holidays" | "biometric" | "mockdata";
+type SettingsTab = "organisation" | "attendance" | "hr" | "holidays" | "biometric" | "database" | "mockdata";
 
 const SETTINGS_TABS: { key: SettingsTab; label: string; icon: React.ElementType; description: string; color: string }[] = [
   { key: "organisation", label: "Organisation",       icon: Building,     description: "Name, country, timezone",       color: "text-emerald-600" },
@@ -30,6 +30,7 @@ const SETTINGS_TABS: { key: SettingsTab; label: string; icon: React.ElementType;
   { key: "hr",           label: "HR Settings",        icon: Users,        description: "Leave, payroll, employment",     color: "text-violet-600"  },
   { key: "holidays",     label: "Holiday Settings",   icon: Calendar,     description: "Public & gazetted holidays",     color: "text-amber-600"   },
   { key: "biometric",   label: "Biometric / ADMS",   icon: Fingerprint,  description: "ZKTeco ZK Push configuration",   color: "text-sky-600"     },
+  { key: "database",     label: "Database",           icon: Database,     description: "DB host, port & credentials",   color: "text-orange-600"  },
   { key: "mockdata",     label: "Mock Data",          icon: Database,     description: "Import & clear sample data",     color: "text-rose-600"    },
 ];
 
@@ -98,6 +99,16 @@ export default function Settings() {
     } catch { setMockMsg({ type: "error", text: "Request failed. Check server connection." }); }
     setMockClearing(false);
   }
+
+  const [dbSaved, setDbSaved] = useState(false);
+  const [dbCopied, setDbCopied] = useState(false);
+  const [dbSettings, setDbSettings] = useState(() => {
+    const saved = localStorage.getItem("db_settings");
+    if (saved) return JSON.parse(saved);
+    return { host: "122.165.225.42", port: "5432", database: "colombo", user: "postgres", password: "wtt@adm123" };
+  });
+  function setDb(k: string, v: string) { setDbSettings((s: any) => ({ ...s, [k]: v })); }
+  const dbConnStr = `postgresql://${dbSettings.user}:${encodeURIComponent(dbSettings.password)}@${dbSettings.host}:${dbSettings.port}/${dbSettings.database}`;
 
   const [hrSettings, setHrSettings] = useState({
     annualLeave: "21", sickLeave: "12", casualLeave: "7",
@@ -567,7 +578,7 @@ export default function Settings() {
                 </div>
                 <div>
                   <Label className="text-xs">Server Port</Label>
-                  <Input readOnly value="80" className="bg-muted font-mono text-xs" />
+                  <Input readOnly value="3333" className="bg-muted font-mono text-xs" />
                 </div>
                 <div>
                   <Label className="text-xs">Protocol</Label>
@@ -590,7 +601,7 @@ export default function Settings() {
                   { step: 1, text: "On the device: Menu → Cloud Server Settings (or ADMS)" },
                   { step: 2, text: "Enable: Cloud Service = ON" },
                   { step: 3, text: <>Server Address: <code className="bg-muted px-1.5 py-0.5 rounded font-mono">{window.location.host}</code></> },
-                  { step: 4, text: <>Server Port: <code className="bg-muted px-1.5 py-0.5 rounded font-mono">80</code></> },
+                  { step: 4, text: <>Server Port: <code className="bg-muted px-1.5 py-0.5 rounded font-mono">3333</code></> },
                   { step: 5, text: "Set device Serial Number — this is used as the Device ID in the system" },
                   { step: 6, text: "Save and restart the device — it will start pushing attendance immediately" },
                 ].map(({ step, text }) => (
@@ -605,6 +616,70 @@ export default function Settings() {
             <div className="flex justify-end">
               <Button className="text-xs flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white" onClick={() => saveFn(setZkSaved)}>
                 {zkSaved ? <><Check className="w-3.5 h-3.5" />Saved!</> : "Save ZK Settings"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Database ──────────────────────────────────────── */}
+        {activeTab === "database" && (
+          <div className="space-y-4">
+            <Card className="p-5 border-orange-200 bg-orange-50/20">
+              <div className="flex items-center gap-2 mb-4 pb-3 border-b border-orange-100">
+                <Database className="w-4 h-4 text-orange-600" />
+                <span className="text-sm font-bold">Database Connection</span>
+                <span className="ml-auto text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-mono">PostgreSQL</span>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">
+                Update the database connection credentials below. After saving, update the <code className="bg-muted px-1 rounded">COLOMBO_DB_URL</code> environment variable or the hardcoded fallback in <code className="bg-muted px-1 rounded">lib/db/src/index.ts</code> with the generated connection string.
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div>
+                  <Label className="text-xs">Host / IP Address</Label>
+                  <Input value={dbSettings.host} onChange={e => setDb("host", e.target.value)} placeholder="122.165.225.42" className="font-mono text-xs" />
+                </div>
+                <div>
+                  <Label className="text-xs">Port</Label>
+                  <Input value={dbSettings.port} onChange={e => setDb("port", e.target.value)} placeholder="5432" className="font-mono text-xs" />
+                </div>
+                <div>
+                  <Label className="text-xs">Database Name</Label>
+                  <Input value={dbSettings.database} onChange={e => setDb("database", e.target.value)} placeholder="colombo" className="font-mono text-xs" />
+                </div>
+                <div>
+                  <Label className="text-xs">Username</Label>
+                  <Input value={dbSettings.user} onChange={e => setDb("user", e.target.value)} placeholder="postgres" className="font-mono text-xs" />
+                </div>
+                <div>
+                  <Label className="text-xs">Password</Label>
+                  <Input type="password" value={dbSettings.password} onChange={e => setDb("password", e.target.value)} placeholder="••••••••" className="font-mono text-xs" />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-5">
+              <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border">
+                <span className="text-sm font-bold">Generated Connection String</span>
+              </div>
+              <Label className="text-xs">Connection URL (copy to code / environment variable)</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <code className="flex-1 bg-muted px-3 py-2.5 rounded-lg text-xs font-mono border border-border break-all">{dbConnStr}</code>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(dbConnStr); setDbCopied(true); setTimeout(() => setDbCopied(false), 2000); }}
+                  className="p-2.5 hover:bg-muted rounded-lg border border-border transition-colors shrink-0"
+                >
+                  {dbCopied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                </button>
+              </div>
+              {dbCopied && <p className="text-xs text-green-600 mt-1">Copied to clipboard!</p>}
+            </Card>
+
+            <div className="flex justify-end">
+              <Button className="text-xs flex items-center gap-2" onClick={() => {
+                localStorage.setItem("db_settings", JSON.stringify(dbSettings));
+                saveFn(setDbSaved);
+              }}>
+                {dbSaved ? <><Check className="w-3.5 h-3.5 text-green-400" />Saved!</> : "Save DB Settings"}
               </Button>
             </div>
           </div>
