@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { db } from "@workspace/db";
 import { biometricDevices, biometricLogs, employees } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
+import { autoSync } from "../lib/biometric-sync.js";
 
 const router = Router();
 
@@ -168,6 +169,10 @@ router.post("/cdata", async (req: Request, res: Response) => {
 
     console.log(`[ADMS] ATTLOG: saved ${count} records for SN=${sn}`);
     res.send(`OK: ${count}`);
+
+    if (count > 0 && dev.branchId) {
+      autoSync(dev.id, dev.branchId);
+    }
     return;
   }
 

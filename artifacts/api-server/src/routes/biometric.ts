@@ -2,113 +2,9 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { biometricDevices, biometricLogs, branches, employees, attendanceRecords } from "@workspace/db/schema";
 import { eq, and, isNull, inArray, isNotNull } from "drizzle-orm";
+import { autoCreateEmployees, autoSync } from "../lib/biometric-sync.js";
 
 const router = Router();
-
-async function getRegionalInfo(branchId: number) {
-  const [branch] = await db.select().from(branches).where(eq(branches.id, branchId));
-  if (!branch) return null;
-  if (branch.type === "regional") {
-    return { regionalCode: branch.code, regionalId: branch.id };
-  }
-  if (branch.type === "sub_branch" && branch.parentId) {
-    const [parent] = await db.select().from(branches).where(eq(branches.id, branch.parentId));
-    if (parent && parent.type === "regional") {
-      return { regionalCode: parent.code, regionalId: parent.id };
-    }
-  }
-  if (branch.type === "head_office") {
-    return { regionalCode: branch.code, regionalId: branch.id };
-  }
-  return null;
-}
-
-async function getBranchIdsInRegion(regionalId: number): Promise<number[]> {
-  const allBranches = await db.select({ id: branches.id, parentId: branches.parentId }).from(branches);
-  const ids: number[] = [regionalId];
-  for (const b of allBranches) {
-    if (b.parentId === regionalId) ids.push(b.id);
-  }
-  return ids;
-}
-
-async function generateNextEmployeeId(branchId: number): Promise<string> {
-  const regional = await getRegionalInfo(branchId);
-  if (!regional) {
-    const count = await db.select({ id: employees.id }).from(employees);
-    return `EMP${String(count.length + 1).padStart(4, "0")}`;
-  }
-  const prefix = regional.regionalCode.toUpperCase();
-  const branchIds = await getBranchIdsInRegion(regional.regionalId);
-  const existing = await db.select({ employeeId: employees.employeeId })
-    .from(employees)
-    .where(inArray(employees.branchId, branchIds));
-
-  let maxNum = 0;
-  for (const e of existing) {
-    const id = e.employeeId.toUpperCase();
-    if (id.startsWith(prefix)) {
-      const numPart = parseInt(id.slice(prefix.length), 10);
-      if (!isNaN(numPart) && numPart > maxNum) maxNum = numPart;
-    }
-  }
-  return `${prefix}${String(maxNum + 1).padStart(3, "0")}`;
-}
-
-async function autoCreateEmployeesForDevice(deviceId: number, branchId: number) {
-  const logs = await db.select({
-    biometricId: biometricLogs.biometricId,
-  }).from(biometricLogs)
-    .where(and(eq(biometricLogs.deviceId, deviceId), isNull(biometricLogs.employeeId)));
-
-  const uniqueIds = [...new Set(logs.map(l => l.biometricId))];
-  if (uniqueIds.length === 0) return 0;
-
-  const today = new Date().toISOString().split("T")[0];
-  let created = 0;
-
-  for (const bioId of uniqueIds) {
-    try {
-      const [existing] = await db.select().from(employees)
-        .where(eq(employees.biometricId, bioId));
-      if (existing) {
-        await db.update(biometricLogs)
-          .set({ employeeId: existing.id })
-          .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
-        continue;
-      }
-
-      const empId = await generateNextEmployeeId(branchId);
-
-      const [newEmp] = await db.insert(employees).values({
-        employeeId: empId,
-        fullName: `Employee ${bioId}`,
-        firstName: null,
-        lastName: null,
-        designation: "Staff",
-        department: "General",
-        branchId,
-        joiningDate: today,
-        email: `${empId.toLowerCase()}@postal.lk`,
-        phone: "",
-        biometricId: bioId,
-        status: "active",
-        employeeType: "permanent",
-      }).returning();
-
-      await db.update(biometricLogs)
-        .set({ employeeId: newEmp.id })
-        .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
-
-      created++;
-      console.log(`[Biometric] Auto-created employee ${empId} for biometricId=${bioId}`);
-    } catch (err) {
-      console.error(`[Biometric] Failed to create employee for biometricId=${bioId}:`, err);
-    }
-  }
-
-  return created;
-}
 
 router.get("/devices", async (_req, res) => {
   try {
@@ -144,9 +40,10 @@ router.put("/devices/:id", async (req, res) => {
 
     let employeesCreated = 0;
     const newBranchId = req.body.branchId;
-    if (newBranchId && (!before?.branchId || before.branchId !== newBranchId)) {
-      employeesCreated = await autoCreateEmployeesForDevice(devId, Number(newBranchId));
-      console.log(`[Biometric] Branch assigned to device ${devId}: created ${employeesCreated} employees`);
+    if (newBranchId) {
+      autoSync(devId, Number(newBranchId));
+    } else if (dev.branchId) {
+      autoSync(devId, dev.branchId);
     }
 
     res.json({
@@ -176,107 +73,6 @@ router.post("/devices/:id/test", async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: "Test failed" }); }
 });
 
-router.post("/devices/:id/create-employees", async (req, res) => {
-  try {
-    const devId = Number(req.params.id);
-    const [dev] = await db.select().from(biometricDevices).where(eq(biometricDevices.id, devId));
-    if (!dev) { res.status(404).json({ success: false, message: "Device not found" }); return; }
-    if (!dev.branchId) { res.status(400).json({ success: false, message: "Assign a branch to this device first" }); return; }
-
-    const count = await autoCreateEmployeesForDevice(devId, dev.branchId);
-    res.json({ success: true, message: `Created ${count} employees from device logs`, employeesCreated: count });
-  } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Failed to create employees" }); }
-});
-
-function calcHours(t1: string | null | undefined, t2: string | null | undefined): number | null {
-  if (!t1 || !t2) return null;
-  const d1 = new Date(t1), d2 = new Date(t2);
-  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return null;
-  const diff = (d2.getTime() - d1.getTime()) / 3600000;
-  return diff > 0 ? Math.round(diff * 100) / 100 : null;
-}
-
-router.post("/devices/:id/sync-attendance", async (req, res) => {
-  try {
-    const devId = Number(req.params.id);
-    const [dev] = await db.select().from(biometricDevices).where(eq(biometricDevices.id, devId));
-    if (!dev) { res.status(404).json({ success: false, message: "Device not found" }); return; }
-    if (!dev.branchId) { res.status(400).json({ success: false, message: "Assign a branch to this device first" }); return; }
-
-    // Step 1: auto-create any missing employees from logs
-    const empCreated = await autoCreateEmployeesForDevice(devId, dev.branchId);
-
-    // Step 2: load all logs with a linked employee (processed or not — we upsert attendance)
-    const logs = await db.select({
-      id: biometricLogs.id,
-      employeeId: biometricLogs.employeeId,
-      punchTime: biometricLogs.punchTime,
-      punchType: biometricLogs.punchType,
-    }).from(biometricLogs)
-      .where(and(eq(biometricLogs.deviceId, devId), isNotNull(biometricLogs.employeeId)));
-
-    // Step 3: group by employeeId + date
-    const byEmpDate = new Map<string, typeof logs>();
-    for (const log of logs) {
-      const dateStr = log.punchTime.toISOString().split("T")[0];
-      const key = `${log.employeeId}_${dateStr}`;
-      if (!byEmpDate.has(key)) byEmpDate.set(key, []);
-      byEmpDate.get(key)!.push(log);
-    }
-
-    let attCreated = 0, attUpdated = 0;
-
-    for (const [key, group] of byEmpDate.entries()) {
-      const [empIdStr, dateStr] = key.split("_");
-      const empId = Number(empIdStr);
-      const sorted = [...group].sort((a, b) => a.punchTime.getTime() - b.punchTime.getTime());
-
-      // First punch = in, last punch = out (if different from first)
-      const firstPunch = sorted[0].punchTime.toISOString();
-      const lastPunch  = sorted.length > 1 ? sorted[sorted.length - 1].punchTime.toISOString() : null;
-
-      const [emp] = await db.select({ branchId: employees.branchId }).from(employees).where(eq(employees.id, empId));
-      const branchId = emp?.branchId ?? dev.branchId;
-
-      const [existing] = await db.select().from(attendanceRecords)
-        .where(and(eq(attendanceRecords.employeeId, empId), eq(attendanceRecords.date, dateStr)));
-
-      if (!existing) {
-        const wh1 = lastPunch ? calcHours(firstPunch, lastPunch) : null;
-        await db.insert(attendanceRecords).values({
-          employeeId: empId,
-          branchId,
-          date: dateStr,
-          status: "present",
-          inTime1: firstPunch,
-          outTime1: lastPunch ?? null,
-          workHours1: wh1,
-          totalHours: wh1,
-          source: "biometric",
-        });
-        attCreated++;
-      } else {
-        // Fill gaps: update inTime1 if missing, outTime1 if missing or extend with later punch
-        const updates: Record<string, any> = { source: "biometric", status: "present", updatedAt: new Date() };
-        if (!existing.inTime1) updates.inTime1 = firstPunch;
-        const currentOut = existing.outTime1 ? new Date(existing.outTime1) : null;
-        const newOut     = lastPunch ? new Date(lastPunch) : null;
-        if (newOut && (!currentOut || newOut > currentOut)) updates.outTime1 = lastPunch;
-        const wh1 = calcHours(updates.inTime1 ?? existing.inTime1, updates.outTime1 ?? existing.outTime1);
-        if (wh1 !== null) { updates.workHours1 = wh1; updates.totalHours = wh1; }
-        await db.update(attendanceRecords).set(updates).where(eq(attendanceRecords.id, existing.id));
-        attUpdated++;
-      }
-
-      // Mark all logs in this group as processed
-      await db.update(biometricLogs).set({ processed: true })
-        .where(inArray(biometricLogs.id, group.map(l => l.id)));
-    }
-
-    console.log(`[Sync] Device ${devId}: empCreated=${empCreated} attCreated=${attCreated} attUpdated=${attUpdated}`);
-    res.json({ success: true, employeesCreated: empCreated, attendanceCreated: attCreated, attendanceUpdated: attUpdated });
-  } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Sync failed" }); }
-});
 
 router.post("/sync-users", async (req, res) => {
   try {
@@ -393,6 +189,10 @@ router.post("/push-logs", async (req, res) => {
     }
 
     res.json({ success: true, inserted });
+
+    if (inserted > 0 && dev.branchId) {
+      autoSync(dev.id, dev.branchId);
+    }
   } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Error" }); }
 });
 
