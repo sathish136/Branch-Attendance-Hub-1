@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser, useListBranches, getListUsersQueryKey } from "@workspace/api-client-react";
+import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser, useListBranches } from "@workspace/api-client-react";
 import { PageHeader, Card, Button, Input, Select, Label, useConfirm } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Plus, Edit2, Trash2, ShieldCheck, Eye, Building2 } from "lucide-react";
@@ -24,8 +23,7 @@ const EMPTY_FORM: UserForm = {
 };
 
 export default function Users() {
-  const qc = useQueryClient();
-  const { data: users, isLoading } = useListUsers();
+  const { data: users, isLoading, refetch } = useListUsers();
   const { data: branches } = useListBranches();
   const create = useCreateUser();
   const update = useUpdateUser();
@@ -191,7 +189,7 @@ export default function Users() {
                           <button onClick={() => openEdit(u)} className="p-1.5 hover:bg-muted rounded text-muted-foreground">
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={async () => { if(await doConfirm(`Delete user "${u.username}"?`, { title: "Delete User" })) remove.mutate({ id: u.id }, { onSuccess: () => qc.invalidateQueries({ queryKey: getListUsersQueryKey() }) }); }}
+                          <button onClick={async () => { if(await doConfirm(`Delete user "${u.username}"?`, { title: "Delete User" })) remove.mutate({ id: u.id }, { onSuccess: () => refetch() }); }}
                             className="p-1.5 hover:bg-red-100 text-red-500 rounded">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

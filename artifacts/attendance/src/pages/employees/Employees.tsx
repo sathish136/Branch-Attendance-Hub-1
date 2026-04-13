@@ -234,12 +234,8 @@ const EMPTY_EMP = {
 function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branches: any[]; onClose: () => void; onSaved: () => void }) {
   const { data: apiDepts } = useGet(["departments"], "/departments");
   const { data: apiDesigs } = useGet(["designations"], "/designations");
-  const deptOptions: string[] = Array.isArray(apiDepts) && apiDepts.length > 0
-    ? apiDepts.map((d: any) => d.name)
-    : DEPT_LIST;
-  const desigOptions: string[] = Array.isArray(apiDesigs) && apiDesigs.length > 0
-    ? apiDesigs.map((d: any) => d.name)
-    : DESIGNATION_LIST;
+  const deptOptions: string[] = Array.isArray(apiDepts) ? apiDepts.map((d: any) => d.name) : [];
+  const desigOptions: string[] = Array.isArray(apiDesigs) ? apiDesigs.map((d: any) => d.name) : [];
 
   const [tab, setTab] = useState<"personal"|"professional"|"documents">("personal");
   const [form, setForm] = useState(emp ? {
