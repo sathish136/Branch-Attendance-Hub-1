@@ -13,7 +13,6 @@ import {
   FileBarChart,
   LogOut,
   Bell,
-  Banknote,
   Activity,
   UserCog,
   ChevronsLeft,
@@ -130,9 +129,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "HR Management",
     items: [
-      { href: "/employees", label: "Employees", icon: Users    },
-      { href: "/payroll",   label: "Payroll",   icon: Banknote },
-      { href: "/shifts",    label: "Shifts",    icon: Clock    },
+      { href: "/employees", label: "Employees", icon: Users },
+      { href: "/shifts",    label: "Shifts",    icon: Clock },
     ],
   },
   {
