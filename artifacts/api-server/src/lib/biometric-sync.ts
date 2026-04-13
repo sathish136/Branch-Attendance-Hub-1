@@ -60,29 +60,55 @@ export async function autoCreateEmployees(deviceId: number, branchId: number): P
 
   for (const bioId of uniqueIds) {
     try {
+      // Re-check existence right before insert to guard against race conditions
       const [existing] = await db.select().from(employees).where(eq(employees.biometricId, bioId));
       if (existing) {
         await db.update(biometricLogs).set({ employeeId: existing.id })
           .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
         continue;
       }
+
       const empId = await generateNextEmployeeId(branchId);
-      const [newEmp] = await db.insert(employees).values({
-        employeeId: empId,
-        fullName: `Employee ${bioId}`,
-        firstName: null,
-        lastName: null,
-        designation: "Staff",
-        department: "General",
-        branchId,
-        joiningDate: today,
-        email: `${empId.toLowerCase()}@postal.lk`,
-        phone: "",
-        biometricId: bioId,
-        status: "active",
-        employeeType: "permanent",
-      }).returning();
-      await db.update(biometricLogs).set({ employeeId: newEmp.id })
+
+      // Double-check: make sure this biometricId wasn't created concurrently
+      const [existingAfter] = await db.select().from(employees).where(eq(employees.biometricId, bioId));
+      if (existingAfter) {
+        await db.update(biometricLogs).set({ employeeId: existingAfter.id })
+          .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
+        continue;
+      }
+
+      // Insert employee; the partial unique index on biometric_id prevents duplicates at DB level
+      let newEmpId: number;
+      try {
+        const result = await db.execute(
+          sql`INSERT INTO employees (employee_id, full_name, first_name, last_name, designation, department, branch_id, joining_date, email, phone, biometric_id, status, employee_type)
+              VALUES (${empId}, ${'Employee ' + bioId}, ${null}, ${null}, ${'Staff'}, ${'General'}, ${branchId}, ${today}, ${empId.toLowerCase() + '@postal.lk'}, ${''}, ${bioId}, ${'active'}, ${'permanent'})
+              ON CONFLICT (biometric_id) WHERE biometric_id IS NOT NULL DO NOTHING
+              RETURNING id`
+        );
+        const rows = (result as any).rows ?? result;
+        if (!rows || rows.length === 0) {
+          // Conflict: employee already created by a concurrent sync
+          const [conflicting] = await db.select().from(employees).where(eq(employees.biometricId, bioId));
+          if (conflicting) {
+            await db.update(biometricLogs).set({ employeeId: conflicting.id })
+              .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
+          }
+          continue;
+        }
+        newEmpId = rows[0].id;
+      } catch (insertErr) {
+        // Unique constraint violated — find the already-existing employee and link
+        const [conflicting] = await db.select().from(employees).where(eq(employees.biometricId, bioId));
+        if (conflicting) {
+          await db.update(biometricLogs).set({ employeeId: conflicting.id })
+            .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
+        }
+        continue;
+      }
+
+      await db.update(biometricLogs).set({ employeeId: newEmpId })
         .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
       created++;
       console.log(`[BioSync] Auto-created employee ${empId} for biometricId=${bioId}`);

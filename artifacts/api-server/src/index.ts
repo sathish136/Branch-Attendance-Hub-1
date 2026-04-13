@@ -39,15 +39,52 @@ async function ensureTables() {
       );
     `);
 
-    // Remove duplicate biometric_id employees — keep the one with lowest id (oldest)
+    // Remove duplicate biometric_id employees — keep oldest (lowest id), reassign references first
     await client.query(`
-      DELETE FROM employees
-      WHERE id NOT IN (
-        SELECT MIN(id) FROM employees
-        WHERE biometric_id IS NOT NULL
-        GROUP BY biometric_id
-      )
-      AND biometric_id IS NOT NULL;
+      DO $$
+      DECLARE
+        dup RECORD;
+        keeper_id INTEGER;
+      BEGIN
+        FOR dup IN
+          SELECT biometric_id, MIN(id) AS keep_id
+          FROM employees
+          WHERE biometric_id IS NOT NULL
+          GROUP BY biometric_id
+          HAVING COUNT(*) > 1
+        LOOP
+          keeper_id := dup.keep_id;
+
+          -- Reassign attendance records from duplicates to keeper
+          UPDATE attendance_records
+          SET employee_id = keeper_id
+          WHERE employee_id IN (
+            SELECT id FROM employees
+            WHERE biometric_id = dup.biometric_id AND id <> keeper_id
+          );
+
+          -- Reassign payroll records from duplicates to keeper
+          UPDATE payroll_records
+          SET employee_id = keeper_id
+          WHERE employee_id IN (
+            SELECT id FROM employees
+            WHERE biometric_id = dup.biometric_id AND id <> keeper_id
+          );
+
+          -- Relink biometric logs from duplicates to keeper
+          UPDATE biometric_logs
+          SET employee_id = keeper_id
+          WHERE employee_id IN (
+            SELECT id FROM employees
+            WHERE biometric_id = dup.biometric_id AND id <> keeper_id
+          );
+
+          -- Delete the duplicate employees
+          DELETE FROM employees
+          WHERE biometric_id = dup.biometric_id AND id <> keeper_id;
+
+        END LOOP;
+      END $$;
     `);
 
     // Add unique partial index on biometric_id (prevents race-condition duplicates)
