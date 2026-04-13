@@ -43,6 +43,14 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: process.env.REPL_ID
+      ? undefined
+      : {
+          "/api": {
+            target: `http://localhost:${process.env.API_PORT || 3000}`,
+            changeOrigin: true,
+          },
+        },
     fs: {
       strict: true,
       deny: ["**/.*"],
