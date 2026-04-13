@@ -290,7 +290,7 @@ function SetupGuide() {
             <div className="space-y-2">
               <CopyField label="ADMS Server Domain" value={domain} />
               <CopyField label="ZK Push Endpoint" value={`${domain}/api/biometric/push`} />
-              <CopyField label="Server Port" value="80" />
+              <CopyField label="Server Port" value="3333" />
             </div>
           </div>
 
@@ -301,7 +301,7 @@ function SetupGuide() {
                 ["1. Access Device Menu", "Press Menu on the device → Go to Comm. Settings → Cloud Server Settings"],
                 ["2. Enable ADMS", "Set ADMS Enable = Yes / On"],
                 ["3. Server Address", `Enter the ADMS Server Domain: ${domain}`],
-                ["4. Server Port", "Set port to 80 (or 443 for HTTPS)"],
+                ["4. Server Port", "Set port to 3333"],
                 ["5. ADMS Upload Interval", "Set to 5 minutes (recommended)"],
                 ["6. Enable Push", "Enable Attendance Push, enable Real-time Upload if available"],
                 ["7. Save & Restart", "Save settings and restart the device to apply changes"],
