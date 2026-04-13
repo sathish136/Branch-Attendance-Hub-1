@@ -2,11 +2,13 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
 import { readFileSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 const { Pool } = pg;
 
 const DEFAULT_DATABASE_URL = "postgresql://postgres:wtt%40adm123@122.165.225.42:5432/colombo";
-export const DB_URL_PATH = "/tmp/.colombo_db_url";
+export const DB_URL_PATH = join(tmpdir(), ".colombo_db_url");
 
 function getConnectionString() {
   if (process.env.COLOMBO_DB_URL) return process.env.COLOMBO_DB_URL;
