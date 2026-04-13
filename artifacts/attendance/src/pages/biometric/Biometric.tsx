@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useListBiometricDevices, useUpdateBiometricDevice, useDeleteBiometricDevice, useListBranches, useListBiometricLogs } from "@workspace/api-client-react";
 import { PageHeader, Card, Button, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy, Radio } from "lucide-react";
+import { Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy, Radio, XCircle } from "lucide-react";
 
 const DEVICE_STATUS: Record<string, { cls: string; icon: React.ElementType }> = {
   online: { cls: "bg-green-100 text-green-700", icon: Wifi },
@@ -275,10 +275,46 @@ function DevicesTab() {
   );
 }
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+function apiUrl(path: string) { return `${BASE}/api${path}`; }
+
 function LogsTab() {
-  const { data, isLoading } = useListBiometricLogs({});
+  const { data, isLoading, refetch } = useListBiometricLogs({});
+  const [clearing, setClearing] = useState(false);
+
+  async function handleClearLogs() {
+    if (!confirm("Clear all push logs? This cannot be undone.")) return;
+    setClearing(true);
+    try {
+      await fetch(apiUrl("/biometric/logs"), { method: "DELETE" });
+      refetch();
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  const logCount = data?.logs?.length ?? 0;
+
   return (
     <Card className="overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+        <span className="text-xs font-semibold text-muted-foreground">
+          {logCount} {logCount === 1 ? "log" : "logs"}
+        </span>
+        <button
+          onClick={handleClearLogs}
+          disabled={clearing || logCount === 0}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors",
+            logCount === 0
+              ? "border-border text-muted-foreground cursor-not-allowed opacity-50"
+              : "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+          )}
+        >
+          <XCircle className="w-3.5 h-3.5" />
+          {clearing ? "Clearing..." : "Clear Logs"}
+        </button>
+      </div>
       {isLoading ? (
         <div className="p-8 text-center text-sm text-muted-foreground">Loading logs...</div>
       ) : (

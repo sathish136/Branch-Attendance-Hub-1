@@ -201,6 +201,18 @@ router.post("/push-logs", async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Error" }); }
 });
 
+router.delete("/logs", async (req, res) => {
+  try {
+    const { deviceId } = req.query;
+    if (deviceId) {
+      await db.delete(biometricLogs).where(eq(biometricLogs.deviceId, Number(deviceId)));
+    } else {
+      await db.delete(biometricLogs);
+    }
+    res.json({ success: true, message: "Logs cleared" });
+  } catch (e) { console.error(e); res.status(500).json({ message: "Error", success: false }); }
+});
+
 router.get("/logs", async (req, res) => {
   try {
     const { deviceId, startDate, endDate, page = "1" } = req.query;
