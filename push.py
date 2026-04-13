@@ -33,15 +33,15 @@ APP_HOST = "0.0.0.0"
 APP_PORT = int(os.environ.get("ADMS_PORT", 3333))
 DB_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "push.db")
 
+REPLIT_APP_URL     = "https://393748dc-25d8-428d-a1b0-4c3f03da9734-00-38mykyo06i3vk.pike.replit.dev"
 _REPLIT_DEV_DOMAIN = os.environ.get("REPLIT_DEV_DOMAIN", "")
-_API_PORT          = os.environ.get("API_PORT", "8080")
 
 if _REPLIT_DEV_DOMAIN:
     PUBLIC_BASE_URL = f"https://{APP_PORT}-{_REPLIT_DEV_DOMAIN}"
     _default_api    = f"https://{_REPLIT_DEV_DOMAIN}"
 else:
     PUBLIC_BASE_URL = f"http://localhost:{APP_PORT}"
-    _default_api    = f"http://localhost:{_API_PORT}"
+    _default_api    = REPLIT_APP_URL
 
 API_BASE_URL = os.environ.get("API_BASE_URL", _default_api).rstrip("/")
 
@@ -94,6 +94,12 @@ def init_db() -> None:
     );
     """)
     conn.commit()
+    try:
+        conn.execute("ALTER TABLE attlog ADD COLUMN synced INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+        print("[DB] Migration: added 'synced' column to attlog")
+    except sqlite3.OperationalError:
+        pass
     conn.close()
     print(f"[DB] SQLite ready: {DB_PATH}")
 
