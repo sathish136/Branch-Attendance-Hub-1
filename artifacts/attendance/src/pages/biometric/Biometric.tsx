@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useListBiometricDevices, useCreateBiometricDevice, useUpdateBiometricDevice, useDeleteBiometricDevice, useTestBiometricDevice, useListBranches, useListBiometricLogs } from "@workspace/api-client-react";
-import { PageHeader, Card, Button, Input, Select, Label } from "@/components/ui";
+import { useListBiometricDevices, useUpdateBiometricDevice, useDeleteBiometricDevice, useListBranches, useListBiometricLogs } from "@workspace/api-client-react";
+import { PageHeader, Card, Button, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { Plus, Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy, Radio } from "lucide-react";
+import { Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy, Radio } from "lucide-react";
 
 const DEVICE_STATUS: Record<string, { cls: string; icon: React.ElementType }> = {
   online: { cls: "bg-green-100 text-green-700", icon: Wifi },
@@ -11,18 +11,6 @@ const DEVICE_STATUS: Record<string, { cls: string; icon: React.ElementType }> = 
 };
 
 type Tab = "devices" | "logs" | "setup";
-
-interface DeviceForm {
-  name: string; serialNumber: string; model: string;
-  ipAddress: string; port: number; branchId: number;
-  pushMethod: "zkpush" | "sdk"; apiKey: string; isActive: boolean;
-}
-
-const EMPTY_FORM: DeviceForm = {
-  name: "", serialNumber: "", model: "ZKTeco F18",
-  ipAddress: "", port: 4370, branchId: 0,
-  pushMethod: "zkpush", apiKey: "", isActive: true,
-};
 
 export default function Biometric() {
   const [tab, setTab] = useState<Tab>("devices");
@@ -53,90 +41,56 @@ export default function Biometric() {
   );
 }
 
+interface BranchForm { branchId: number; name: string; }
+
 function DevicesTab() {
-  const { data: devices, isLoading } = useListBiometricDevices();
+  const { data: devices, isLoading, refetch } = useListBiometricDevices();
   const { data: branches } = useListBranches();
-  const create = useCreateBiometricDevice();
   const update = useUpdateBiometricDevice();
   const remove = useDeleteBiometricDevice();
-  const test = useTestBiometricDevice();
 
-  const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState<DeviceForm>(EMPTY_FORM);
-  const [testResults, setTestResults] = useState<Record<number, { success: boolean; message: string }>>({});
+  const [branchForm, setBranchForm] = useState<BranchForm>({ branchId: 0, name: "" });
 
-  function openCreate() { setForm(EMPTY_FORM); setEditId(null); setShowForm(true); }
   function openEdit(d: any) {
-    setForm({ name: d.name, serialNumber: d.serialNumber, model: d.model, ipAddress: d.ipAddress, port: d.port, branchId: d.branchId, pushMethod: d.pushMethod, apiKey: d.apiKey || "", isActive: d.isActive });
-    setEditId(d.id); setShowForm(true);
+    setBranchForm({ branchId: d.branchId || 0, name: d.name });
+    setEditId(d.id);
   }
   function handleSave() {
-    const payload = { ...form, apiKey: form.apiKey || null };
-    if (editId) {
-      update.mutate({ id: editId, data: payload }, { onSuccess: () => setShowForm(false) });
-    } else {
-      create.mutate({ data: payload }, { onSuccess: () => setShowForm(false) });
-    }
-  }
-  function handleTest(id: number) {
-    test.mutate({ id }, { onSuccess: (data) => setTestResults(r => ({ ...r, [id]: data })) });
+    if (!editId) return;
+    update.mutate(
+      { id: editId, data: { branchId: branchForm.branchId || null, name: branchForm.name } },
+      { onSuccess: () => setEditId(null) }
+    );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 bg-green-50 border border-green-200 px-3 py-2 rounded-lg text-xs text-green-700">
-          <Radio className="w-3.5 h-3.5 text-green-600 animate-pulse" />
-          <span>ADMS server listening on port <strong>3333</strong> — configure your ZKTeco device to push to this port and devices will appear here automatically.</span>
-        </div>
-        <Button onClick={openCreate} className="flex items-center gap-2 text-xs">
-          <Plus className="w-4 h-4" />Add Device
-        </Button>
+      <div className="flex items-center gap-3 bg-green-50 border border-green-200 px-3 py-2 rounded-lg text-xs text-green-700">
+        <Radio className="w-3.5 h-3.5 text-green-600 shrink-0 animate-pulse" />
+        <span>
+          ADMS server listening on port <strong>3333</strong> — devices appear automatically when your ZKTeco machine connects to this port.
+        </span>
+        <button onClick={() => refetch()} className="ml-auto p-1 hover:bg-green-100 rounded" title="Refresh">
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
       </div>
 
-      {showForm && (
-        <Card className="p-5 border-primary/30 bg-primary/5">
-          <h3 className="font-semibold text-sm mb-4">{editId ? "Edit Device" : "Add New Device"}</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {([
-              { key: "name", label: "Device Name", type: "text", placeholder: "e.g. Main Gate BIO" },
-              { key: "serialNumber", label: "Serial Number", type: "text", placeholder: "XXXXXXXX" },
-              { key: "model", label: "Model", type: "text", placeholder: "ZKTeco F18" },
-              { key: "ipAddress", label: "IP Address", type: "text", placeholder: "192.168.1.201" },
-              { key: "port", label: "Port", type: "number", placeholder: "4370" },
-              { key: "apiKey", label: "API Key (Optional)", type: "text", placeholder: "zk-secret-key" },
-            ] as const).map(({ key, label, type, placeholder }) => (
-              <div key={key}>
-                <Label className="text-xs">{label}</Label>
-                <Input type={type} placeholder={placeholder} value={(form as any)[key]}
-                  onChange={e => setForm(f => ({ ...f, [key]: type === "number" ? Number(e.target.value) : e.target.value }))} />
-              </div>
-            ))}
-            <div>
+      {editId && (
+        <Card className="p-4 border-primary/30 bg-primary/5">
+          <h3 className="font-semibold text-sm mb-3">Assign Branch — {branchForm.name}</h3>
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
               <Label className="text-xs">Branch</Label>
-              <Select value={form.branchId || ""} onChange={e => setForm(f => ({ ...f, branchId: Number(e.target.value) }))}>
+              <Select value={branchForm.branchId || ""} onChange={e => setBranchForm(f => ({ ...f, branchId: Number(e.target.value) }))}>
                 <option value="">Select Branch</option>
                 {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </Select>
             </div>
-            <div>
-              <Label className="text-xs">Push Method</Label>
-              <Select value={form.pushMethod} onChange={e => setForm(f => ({ ...f, pushMethod: e.target.value as any }))}>
-                <option value="zkpush">ZK Push (ADMS)</option>
-                <option value="sdk">SDK Direct</option>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2 pt-5">
-              <input type="checkbox" checked={form.isActive} onChange={e => setForm(f => ({ ...f, isActive: e.target.checked }))} className="accent-primary" id="isActiveChk" />
-              <label htmlFor="isActiveChk" className="text-sm">Active</label>
-            </div>
-          </div>
-          <div className="flex gap-2 justify-end mt-4">
-            <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={create.isPending || update.isPending}>
-              {create.isPending || update.isPending ? "Saving..." : "Save Device"}
+            <Button onClick={handleSave} disabled={update.isPending} className="text-xs">
+              {update.isPending ? "Saving..." : "Save"}
             </Button>
+            <Button variant="outline" onClick={() => setEditId(null)} className="text-xs">Cancel</Button>
           </div>
         </Card>
       )}
@@ -149,7 +103,7 @@ function DevicesTab() {
             <table className="w-full text-xs">
               <thead className="bg-muted/50">
                 <tr>
-                  {["Device Name","Model","Serial No.","Branch","IP Address","Port","Push Method","Status","Last Sync","Actions"].map(h => (
+                  {["Device Name","Model","Serial No.","Branch","IP Address","Last Sync","Status","Actions"].map(h => (
                     <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -158,7 +112,6 @@ function DevicesTab() {
                 {(devices || []).map((d: any) => {
                   const st = DEVICE_STATUS[d.status] || DEVICE_STATUS.offline;
                   const StatusIcon = st.icon;
-                  const tr = testResults[d.id];
                   return (
                     <tr key={d.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-2 font-medium">{d.name}</td>
@@ -167,34 +120,26 @@ function DevicesTab() {
                       <td className="px-3 py-2 whitespace-nowrap">
                         {d.branchName
                           ? <span className="text-muted-foreground">{d.branchName}</span>
-                          : <span className="text-amber-600 font-medium text-xs bg-amber-50 px-2 py-0.5 rounded border border-amber-200">⚠ Assign Branch</span>
+                          : <button onClick={() => openEdit(d)} className="text-amber-600 font-medium text-xs bg-amber-50 px-2 py-0.5 rounded border border-amber-200 hover:bg-amber-100 transition-colors">
+                              ⚠ Assign Branch
+                            </button>
                         }
                       </td>
-                      <td className="px-3 py-2 font-mono">{d.ipAddress}</td>
-                      <td className="px-3 py-2 font-mono">{d.port}</td>
-                      <td className="px-3 py-2">
-                        <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-medium">
-                          {d.pushMethod === "zkpush" ? "ZK Push" : "SDK"}
-                        </span>
-                      </td>
+                      <td className="px-3 py-2 font-mono">{d.ipAddress || "—"}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{d.lastSync ? new Date(d.lastSync).toLocaleString() : "Never"}</td>
                       <td className="px-3 py-2">
                         <span className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium w-fit", st.cls)}>
                           <StatusIcon className="w-3 h-3" />
                           {d.status}
                         </span>
-                        {tr && <span className={cn("text-xs mt-0.5 block", tr.success ? "text-green-600" : "text-red-600")}>{tr.message}</span>}
                       </td>
-                      <td className="px-3 py-2 text-muted-foreground">{d.lastSync ? new Date(d.lastSync).toLocaleString() : "Never"}</td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1">
-                          <button onClick={() => handleTest(d.id)} className="p-1.5 hover:bg-green-100 text-green-600 rounded" title="Test Connection">
-                            <RefreshCw className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => openEdit(d)} className="p-1.5 hover:bg-muted rounded text-muted-foreground">
+                          <button onClick={() => openEdit(d)} className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Assign Branch">
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => { if(confirm("Delete this device?")) remove.mutate({ id: d.id }); }}
-                            className="p-1.5 hover:bg-red-100 text-red-500 rounded">
+                          <button onClick={() => { if(confirm("Remove this device?")) remove.mutate({ id: d.id }); }}
+                            className="p-1.5 hover:bg-red-100 text-red-500 rounded" title="Delete">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -203,8 +148,12 @@ function DevicesTab() {
                   );
                 })}
                 {!devices?.length && (
-                  <tr><td colSpan={10} className="text-center py-10 text-muted-foreground">
-                    No biometric devices configured. Click "Add Device" to register your first ZKTeco machine.
+                  <tr><td colSpan={8} className="text-center py-12 text-muted-foreground">
+                    <div className="flex flex-col items-center gap-2">
+                      <Radio className="w-8 h-8 text-muted-foreground/40" />
+                      <p>No devices connected yet.</p>
+                      <p className="text-xs">Configure your ZKTeco machine to push to port <strong>3333</strong> — it will appear here automatically.</p>
+                    </div>
                   </td></tr>
                 )}
               </tbody>
