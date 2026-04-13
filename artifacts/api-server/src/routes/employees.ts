@@ -122,6 +122,31 @@ router.get("/next-id", async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ message: "Error", success: false }); }
 });
 
+// POST /api/employees/sync-names
+// Called by push.py or any external script to sync employee names from the device.
+// Body: { users: [{ biometricId: string, name: string }] }
+// or:   { biometricId: string, name: string }  (single user)
+router.post("/sync-names", async (req, res) => {
+  try {
+    const body = req.body;
+    const users: { biometricId: string; name: string }[] = Array.isArray(body.users)
+      ? body.users
+      : [{ biometricId: body.biometricId, name: body.name }];
+
+    let updated = 0;
+    for (const u of users) {
+      if (!u.biometricId || !u.name) continue;
+      const [emp] = await db.select().from(employees).where(eq(employees.biometricId, String(u.biometricId)));
+      if (!emp) continue;
+      await db.update(employees)
+        .set({ fullName: u.name })
+        .where(eq(employees.biometricId, String(u.biometricId)));
+      updated++;
+    }
+    res.json({ success: true, updated });
+  } catch (e) { console.error(e); res.status(500).json({ message: "Error", success: false }); }
+});
+
 router.get("/", async (req, res) => {
   try {
     const { branchId, status, department, employeeType, search, page = "1", limit = "50" } = req.query;
