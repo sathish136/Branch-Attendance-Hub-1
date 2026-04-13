@@ -14,36 +14,45 @@ function nowStamp(): string {
   return Math.floor(Date.now() / 1000).toString();
 }
 
-async function findOrNoteDevice(sn: string, ip: string): Promise<typeof biometricDevices.$inferSelect> {
-  const [dev] = await db.select().from(biometricDevices)
-    .where(eq(biometricDevices.serialNumber, sn));
+async function findOrNoteDevice(sn: string, ip: string): Promise<typeof biometricDevices.$inferSelect | null> {
+  try {
+    const [dev] = await db.select().from(biometricDevices)
+      .where(eq(biometricDevices.serialNumber, sn));
 
-  if (dev) {
-    await db.update(biometricDevices)
-      .set({ status: "online", lastSync: new Date(), ipAddress: ip || dev.ipAddress })
-      .where(eq(biometricDevices.id, dev.id));
-    return { ...dev, status: "online", lastSync: new Date(), ipAddress: ip || dev.ipAddress };
+    if (dev) {
+      await db.update(biometricDevices)
+        .set({ status: "online", lastSync: new Date(), ipAddress: ip || dev.ipAddress })
+        .where(eq(biometricDevices.id, dev.id));
+      console.log(`[ADMS] Device updated: SN=${sn} IP=${ip}`);
+      return { ...dev, status: "online", lastSync: new Date(), ipAddress: ip || dev.ipAddress };
+    }
+
+    const [created] = await db.insert(biometricDevices).values({
+      name: `Device ${sn}`,
+      serialNumber: sn,
+      model: "ZKTeco",
+      ipAddress: ip || "",
+      port: 4370,
+      branchId: null,
+      pushMethod: "zkpush",
+      status: "online",
+      lastSync: new Date(),
+      isActive: true,
+    }).returning();
+    console.log(`[ADMS] New device registered: SN=${sn} IP=${ip} id=${created.id}`);
+    return created;
+  } catch (err) {
+    console.error(`[ADMS] DB error for SN=${sn}:`, err);
+    return null;
   }
-
-  const [created] = await db.insert(biometricDevices).values({
-    name: `Device ${sn}`,
-    serialNumber: sn,
-    model: "ZKTeco",
-    ipAddress: ip || "",
-    port: 4370,
-    branchId: null,
-    pushMethod: "zkpush",
-    status: "online",
-    lastSync: new Date(),
-    isActive: true,
-  }).returning();
-  return created;
 }
 
 router.get("/cdata", async (req: Request, res: Response) => {
   const sn = (req.query.SN as string) || "";
   const options = (req.query.options as string) || "";
   const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "";
+
+  console.log(`[ADMS] GET /cdata SN=${sn} options=${options} ip=${ip}`);
 
   if (!sn) { res.send("ERROR"); return; }
 
@@ -69,55 +78,74 @@ router.post("/cdata", async (req: Request, res: Response) => {
   const table = (req.query.table as string) || "";
   const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "";
 
+  console.log(`[ADMS] POST /cdata SN=${sn} table=${table} ip=${ip}`);
+
   if (!sn) { res.send("ERROR"); return; }
 
   const dev = await findOrNoteDevice(sn, ip);
 
+  if (!dev) {
+    console.error(`[ADMS] Could not register device SN=${sn}, still responding OK to device`);
+    res.send("OK");
+    return;
+  }
+
   if (table === "ATTLOG") {
     const body = typeof req.body === "string" ? req.body : "";
-    const lines = body.split("\n").map(l => l.trim()).filter(Boolean);
+    const lines = body.split("\n").map((l: string) => l.trim()).filter(Boolean);
     let count = 0;
 
     for (const line of lines) {
-      const parts = line.split("\t");
-      if (parts.length < 3) continue;
-
-      const [biometricId, , datetimeStr] = parts;
-      const statusCode = parts[1];
-
-      let punchType: "in" | "out" | "unknown" = "unknown";
-      if (statusCode === "0") punchType = "in";
-      else if (statusCode === "1") punchType = "out";
-
-      let punchTime: Date;
       try {
-        punchTime = new Date(datetimeStr.replace(" ", "T"));
-        if (isNaN(punchTime.getTime())) continue;
-      } catch { continue; }
+        const parts = line.split("\t");
+        if (parts.length < 3) continue;
 
-      const existing = await db.select().from(biometricLogs)
-        .where(and(
-          eq(biometricLogs.deviceId, dev.id),
-          eq(biometricLogs.biometricId, biometricId),
-          eq(biometricLogs.punchTime, punchTime),
-        ));
-      if (existing.length > 0) continue;
+        const [biometricId, , datetimeStr] = parts;
+        const statusCode = parts[1];
 
-      const [emp] = await db.select().from(employees)
-        .where(eq(employees.biometricId, biometricId));
+        let punchType: "in" | "out" | "unknown" = "unknown";
+        if (statusCode === "0") punchType = "in";
+        else if (statusCode === "1") punchType = "out";
 
-      await db.insert(biometricLogs).values({
-        deviceId: dev.id,
-        employeeId: emp?.id || null,
-        biometricId,
-        punchTime,
-        punchType,
-        processed: false,
-      });
-      count++;
+        let punchTime: Date;
+        try {
+          punchTime = new Date(datetimeStr.replace(" ", "T"));
+          if (isNaN(punchTime.getTime())) continue;
+        } catch { continue; }
+
+        const existing = await db.select().from(biometricLogs)
+          .where(and(
+            eq(biometricLogs.deviceId, dev.id),
+            eq(biometricLogs.biometricId, biometricId),
+            eq(biometricLogs.punchTime, punchTime),
+          ));
+        if (existing.length > 0) continue;
+
+        const [emp] = await db.select().from(employees)
+          .where(eq(employees.biometricId, biometricId));
+
+        await db.insert(biometricLogs).values({
+          deviceId: dev.id,
+          employeeId: emp?.id || null,
+          biometricId,
+          punchTime,
+          punchType,
+          processed: false,
+        });
+        count++;
+      } catch (lineErr) {
+        console.error(`[ADMS] Error processing ATTLOG line: "${line}"`, lineErr);
+      }
     }
 
+    console.log(`[ADMS] ATTLOG: saved ${count} records for SN=${sn}`);
     res.send(`OK: ${count}`);
+    return;
+  }
+
+  if (table === "OPERLOG") {
+    console.log(`[ADMS] OPERLOG received for SN=${sn} (ignored)`);
+    res.send("OK");
     return;
   }
 
@@ -127,6 +155,7 @@ router.post("/cdata", async (req: Request, res: Response) => {
 router.get("/getrequest", async (req: Request, res: Response) => {
   const sn = (req.query.SN as string) || "";
   const ip = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "";
+  console.log(`[ADMS] GET /getrequest SN=${sn}`);
   if (sn) await findOrNoteDevice(sn, ip);
   res.send("OK");
 });
