@@ -216,6 +216,96 @@ router.post("/sync-users", async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Sync failed" }); }
 });
 
+router.post("/push-device", async (req, res) => {
+  try {
+    const { serialNumber, ipAddress, pushver } = req.body as {
+      serialNumber: string;
+      ipAddress?: string;
+      pushver?: string;
+    };
+    if (!serialNumber) { res.status(400).json({ success: false, message: "serialNumber required" }); return; }
+
+    const [existing] = await db.select().from(biometricDevices)
+      .where(eq(biometricDevices.serialNumber, serialNumber));
+
+    if (existing) {
+      await db.update(biometricDevices)
+        .set({ status: "online", lastSync: new Date(), ipAddress: ipAddress || existing.ipAddress })
+        .where(eq(biometricDevices.id, existing.id));
+      res.json({ success: true, deviceId: existing.id, action: "updated" });
+    } else {
+      const [created] = await db.insert(biometricDevices).values({
+        name: `Device ${serialNumber}`,
+        serialNumber,
+        model: "ZKTeco",
+        ipAddress: ipAddress || "",
+        port: 3333,
+        branchId: null,
+        pushMethod: "zkpush",
+        status: "online",
+        lastSync: new Date(),
+        isActive: true,
+      }).returning();
+      res.status(201).json({ success: true, deviceId: created.id, action: "created" });
+    }
+  } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Error" }); }
+});
+
+router.post("/push-logs", async (req, res) => {
+  try {
+    const { sn, records } = req.body as {
+      sn: string;
+      records: Array<{ pin: string; time: string; status: string; verify?: string; workcode?: string }>;
+    };
+    if (!sn || !Array.isArray(records)) {
+      res.status(400).json({ success: false, message: "sn and records[] required" }); return;
+    }
+
+    const [dev] = await db.select().from(biometricDevices)
+      .where(eq(biometricDevices.serialNumber, sn));
+    if (!dev) {
+      res.status(404).json({ success: false, message: "Device not found — call push-device first" }); return;
+    }
+
+    let inserted = 0;
+    for (const r of records) {
+      const { pin, time: timeStr, status: statusCode } = r;
+      if (!pin || !timeStr) continue;
+
+      let punchTime: Date;
+      try {
+        punchTime = new Date(timeStr.replace(" ", "T") + "+05:30");
+        if (isNaN(punchTime.getTime())) continue;
+      } catch { continue; }
+
+      const punchType = statusCode === "0" ? "in" : statusCode === "1" ? "out" : "unknown";
+
+      const [existing] = await db.select({ id: biometricLogs.id }).from(biometricLogs)
+        .where(and(
+          eq(biometricLogs.deviceId, dev.id),
+          eq(biometricLogs.biometricId, pin),
+          eq(biometricLogs.punchTime, punchTime),
+        ));
+      if (existing) continue;
+
+      const [emp] = await db.select({ id: employees.id }).from(employees)
+        .where(eq(employees.biometricId, pin));
+
+      await db.insert(biometricLogs).values({
+        deviceId: dev.id,
+        employeeId: emp?.id || null,
+        biometricId: pin,
+        punchTime,
+        punchType: punchType as "in" | "out" | "unknown",
+        processed: false,
+      });
+      inserted++;
+    }
+
+    res.json({ success: true, inserted });
+  } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Error" }); }
+});
+
 router.get("/logs", async (req, res) => {
   try {
     const { deviceId, startDate, endDate, page = "1" } = req.query;

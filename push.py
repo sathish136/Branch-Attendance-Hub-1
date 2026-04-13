@@ -3,26 +3,26 @@
 ZKTeco PUSH Server
 ==================
 Listens on port 3333 for ZKTeco device connections.
-Stores data in push.db (SQLite) and syncs to Postgres
-(biometric_devices + biometric_logs tables).
+Stores data in push.db (SQLite) as a local buffer,
+then forwards device/user/attlog data to the API server via HTTP.
 
 Usage:
     python push.py
 
-Set Postgres credentials via environment variables:
-    PG_HOST, PG_PORT, PG_DATABASE, PG_USER, PG_PASSWORD
+Set API server URL via environment variable:
+    API_BASE_URL   (default: http://localhost:8080)
 """
 
 from __future__ import annotations
 
 import os
 import re
-import sys
 import sqlite3
-from datetime import datetime, timezone, timedelta
+import threading
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-import psycopg2
+import requests
 from flask import Flask, request, Response, jsonify
 
 # ============================================================================
@@ -33,45 +33,18 @@ APP_HOST = "0.0.0.0"
 APP_PORT = int(os.environ.get("ADMS_PORT", 3333))
 DB_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "push.db")
 
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8080").rstrip("/")
+
 _REPLIT_DEV_DOMAIN = os.environ.get("REPLIT_DEV_DOMAIN", "")
 if _REPLIT_DEV_DOMAIN:
     PUBLIC_BASE_URL = f"https://{APP_PORT}-{_REPLIT_DEV_DOMAIN}"
 else:
     PUBLIC_BASE_URL = f"http://localhost:{APP_PORT}"
 
-PG_DATABASE_URL: Optional[str] = None
-pg_conn = None
-
-
-def ensure_db_settings() -> None:
-    global PG_DATABASE_URL
-    host     = os.environ.get("PG_HOST",     "localhost")
-    port     = os.environ.get("PG_PORT",     "5432")
-    database = os.environ.get("PG_DATABASE", "postal")
-    user     = os.environ.get("PG_USER",     "postgres")
-    password = os.environ.get("PG_PASSWORD", "")
-    PG_DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{database}"
-
-
-def pg() -> Optional[psycopg2.extensions.connection]:
-    global pg_conn
-    if not PG_DATABASE_URL:
-        return None
-    try:
-        if pg_conn is None or pg_conn.closed:
-            pg_conn = psycopg2.connect(PG_DATABASE_URL)
-            pg_conn.autocommit = True
-        return pg_conn
-    except Exception as e:
-        print(f"[PG] Connection error: {e}")
-        pg_conn = None
-        return None
-
-
 app = Flask(__name__)
 
 # ============================================================================
-# SQLITE
+# SQLITE (local buffer)
 # ============================================================================
 
 def utc_now_iso() -> str:
@@ -112,12 +85,126 @@ def init_db() -> None:
         verify TEXT,
         workcode TEXT,
         raw_line TEXT,
-        received_at_utc TEXT
+        received_at_utc TEXT,
+        synced INTEGER NOT NULL DEFAULT 0
     );
     """)
     conn.commit()
     conn.close()
     print(f"[DB] SQLite ready: {DB_PATH}")
+
+# ============================================================================
+# API CLIENT
+# ============================================================================
+
+def api_post(path: str, payload: dict) -> Optional[dict]:
+    url = f"{API_BASE_URL}{path}"
+    try:
+        r = requests.post(url, json=payload, timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f"[API] POST {path} failed: {e}")
+        return None
+
+
+def push_device_to_api(sn: str, ip: str, pushver: str = "") -> None:
+    result = api_post("/api/biometric/push-device", {
+        "serialNumber": sn,
+        "ipAddress": ip,
+        "pushver": pushver,
+    })
+    if result:
+        print(f"[API] Device {sn} synced: {result.get('action', '?')}")
+
+
+def push_logs_to_api(sn: str, records: List[dict]) -> None:
+    if not records:
+        return
+    result = api_post("/api/biometric/push-logs", {"sn": sn, "records": records})
+    if result:
+        inserted = result.get("inserted", 0)
+        if inserted:
+            print(f"[API] Pushed {inserted} logs for device {sn}")
+
+
+def push_users_to_api(users: List[dict]) -> None:
+    if not users:
+        return
+    result = api_post("/api/biometric/sync-users", {"users": users})
+    if result:
+        updated = result.get("updated", 0)
+        if updated:
+            print(f"[API] Synced {updated} employee names")
+
+# ============================================================================
+# SQLITE HELPERS
+# ============================================================================
+
+def upsert_device(sn: str, ip: str, pushver: str = "", info: str = "") -> None:
+    conn = db()
+    conn.execute("""
+        INSERT INTO devices (sn, last_seen_utc, last_ip, pushver, info)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(sn) DO UPDATE SET
+          last_seen_utc = excluded.last_seen_utc,
+          last_ip       = excluded.last_ip,
+          pushver       = excluded.pushver,
+          info = CASE WHEN excluded.info != '' THEN excluded.info ELSE devices.info END
+    """, (sn, utc_now_iso(), ip, pushver, info))
+    conn.commit()
+    conn.close()
+
+    threading.Thread(target=push_device_to_api, args=(sn, ip, pushver), daemon=True).start()
+
+
+def upsert_user(sn: str, kv: Dict[str, str], raw_line: str) -> None:
+    pin  = kv.get("PIN") or kv.get("Pin") or ""
+    if not pin:
+        return
+    name = kv.get("Name", "").strip()
+
+    conn = db()
+    conn.execute("""
+        INSERT INTO users (sn, pin, name, card, updated_at_utc)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(sn, pin) DO UPDATE SET
+          name = excluded.name, card = excluded.card,
+          updated_at_utc = excluded.updated_at_utc
+    """, (sn, pin, name, kv.get("Card", ""), utc_now_iso()))
+    conn.commit()
+    conn.close()
+
+    if name:
+        threading.Thread(
+            target=push_users_to_api,
+            args=([{"sn": sn, "pin": pin, "name": name}],),
+            daemon=True,
+        ).start()
+
+
+def insert_attlog(sn: str, rec: Dict[str, str], raw_line: str) -> None:
+    conn = db()
+    conn.execute("""
+        INSERT INTO attlog
+          (sn, pin, time, status, verify, workcode, raw_line, received_at_utc, synced)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+    """, (sn, rec.get("pin",""), rec.get("time",""), rec.get("status",""),
+          rec.get("verify",""), rec.get("workcode",""), raw_line, utc_now_iso()))
+    conn.commit()
+    conn.close()
+
+    threading.Thread(
+        target=push_logs_to_api,
+        args=(sn, [{
+            "pin":      rec.get("pin", ""),
+            "time":     rec.get("time", ""),
+            "status":   rec.get("status", "0"),
+            "verify":   rec.get("verify", ""),
+            "workcode": rec.get("workcode", ""),
+        }]),
+        daemon=True,
+    ).start()
 
 # ============================================================================
 # PARSING
@@ -149,200 +236,34 @@ def parse_attlog_record(line: str) -> Optional[Dict[str, str]]:
             "verify": verify, "workcode": workcode}
 
 # ============================================================================
-# DEVICE / USER / ATTLOG
+# STARTUP SYNC (unsynced SQLite records → API)
 # ============================================================================
 
-def upsert_device(sn: str, ip: str, pushver: str = "", info: str = "") -> None:
-    conn = db()
-    conn.execute("""
-        INSERT INTO devices (sn, last_seen_utc, last_ip, pushver, info)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(sn) DO UPDATE SET
-          last_seen_utc = excluded.last_seen_utc,
-          last_ip       = excluded.last_ip,
-          pushver       = excluded.pushver,
-          info = CASE WHEN excluded.info != '' THEN excluded.info ELSE devices.info END
-    """, (sn, utc_now_iso(), ip, pushver, info))
-    conn.commit()
-    conn.close()
-
-    pgc = pg()
-    if pgc is None:
-        return
-    try:
-        with pgc.cursor() as cur:
-            cur.execute("""
-                INSERT INTO biometric_devices
-                  (name, serial_number, model, ip_address, port, push_method, status, last_sync, is_active, created_at)
-                VALUES (%s, %s, 'ZKTeco', %s, 3333, 'zkpush', 'online', NOW(), true, NOW())
-                ON CONFLICT (serial_number) DO UPDATE SET
-                  status     = 'online',
-                  last_sync  = NOW(),
-                  ip_address = CASE WHEN EXCLUDED.ip_address != ''
-                                    THEN EXCLUDED.ip_address
-                                    ELSE biometric_devices.ip_address END
-            """, (f"Device {sn}", sn, ip or ""))
-    except Exception as e:
-        print(f"[PG] biometric_devices upsert failed SN={sn}: {e}")
-
-
-def upsert_user(sn: str, kv: Dict[str, str], raw_line: str) -> None:
-    pin  = kv.get("PIN") or kv.get("Pin") or ""
-    if not pin:
-        return
-    name = kv.get("Name", "").strip()
-
-    conn = db()
-    conn.execute("""
-        INSERT INTO users (sn, pin, name, card, updated_at_utc)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(sn, pin) DO UPDATE SET
-          name = excluded.name, card = excluded.card,
-          updated_at_utc = excluded.updated_at_utc
-    """, (sn, pin, name, kv.get("Card", ""), utc_now_iso()))
-    conn.commit()
-    conn.close()
-
-    if not name:
-        return
-    pgc = pg()
-    if pgc is None:
-        return
-    try:
-        parts = name.split(" ", 1)
-        first = parts[0]
-        last  = parts[1] if len(parts) > 1 else None
-        with pgc.cursor() as cur:
-            cur.execute("""
-                UPDATE employees
-                SET full_name = %s, first_name = %s, last_name = %s
-                WHERE biometric_id = %s
-            """, (name, first, last, pin))
-            if cur.rowcount > 0:
-                print(f"[PG] Employee name updated biometric_id={pin}: {name}")
-    except Exception as e:
-        print(f"[PG] Employee name sync failed PIN={pin}: {e}")
-
-
-def insert_attlog(sn: str, rec: Dict[str, str], raw_line: str) -> None:
-    conn = db()
-    conn.execute("""
-        INSERT INTO attlog
-          (sn, pin, time, status, verify, workcode, raw_line, received_at_utc)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (sn, rec.get("pin",""), rec.get("time",""), rec.get("status",""),
-          rec.get("verify",""), rec.get("workcode",""), raw_line, utc_now_iso()))
-    conn.commit()
-    conn.close()
-    insert_biometric_log_postgres(sn, rec)
-
-
-def insert_biometric_log_postgres(sn: str, rec: Dict[str, str]) -> None:
-    pgc = pg()
-    if pgc is None:
-        return
-
-    pin            = rec.get("pin") or ""
-    punch_time_str = rec.get("time") or ""
-    status_code    = rec.get("status") or "0"
-    if not pin or not sn or not punch_time_str:
-        return
-
-    # Device sends Sri Lanka time (IST UTC+5:30) — convert to UTC for storage
-    punch_value: object = punch_time_str
-    try:
-        local_dt    = datetime.strptime(punch_time_str, "%Y-%m-%d %H:%M:%S")
-        ist_dt      = local_dt.replace(tzinfo=timezone(timedelta(hours=5, minutes=30)))
-        punch_value = ist_dt.astimezone(timezone.utc).replace(tzinfo=None)
-    except Exception:
-        pass
-
-    punch_type = "in" if status_code == "0" else "out" if status_code == "1" else "unknown"
-
-    try:
-        with pgc.cursor() as cur:
-            cur.execute("SELECT id FROM biometric_devices WHERE serial_number = %s LIMIT 1", (sn,))
-            row = cur.fetchone()
-            if not row:
-                return
-            device_id = row[0]
-
-            cur.execute("SELECT id FROM employees WHERE biometric_id = %s LIMIT 1", (pin,))
-            emp        = cur.fetchone()
-            employee_id = emp[0] if emp else None
-
-            cur.execute("""
-                SELECT 1 FROM biometric_logs
-                WHERE device_id = %s AND biometric_id = %s AND punch_time = %s LIMIT 1
-            """, (device_id, pin, punch_value))
-            if cur.fetchone():
-                return
-
-            cur.execute("""
-                INSERT INTO biometric_logs
-                  (device_id, employee_id, biometric_id, punch_time, punch_type, processed, created_at)
-                VALUES (%s, %s, %s, %s, %s, false, NOW())
-            """, (device_id, employee_id, pin, punch_value, punch_type))
-    except Exception as e:
-        print(f"[PG] biometric_log insert failed PIN={pin} SN={sn}: {e}")
-
-# ============================================================================
-# STARTUP SYNC
-# ============================================================================
-
-def sync_attlogs_to_postgres() -> None:
-    if pg() is None:
-        print("[SYNC] Postgres unavailable, skipping attlog sync.")
-        return
+def sync_pending_to_api() -> None:
     conn  = db()
-    total = conn.execute("SELECT COUNT(*) AS c FROM attlog").fetchone()["c"]
-    if not total:
-        conn.close()
-        return
-    print(f"[SYNC] Syncing {total} attlog records to Postgres...")
-    rows = conn.execute(
-        "SELECT sn, pin, time, status, verify, workcode FROM attlog ORDER BY id"
+    rows  = conn.execute(
+        "SELECT sn, pin, time, status, verify, workcode FROM attlog WHERE synced=0 ORDER BY id"
     ).fetchall()
     conn.close()
-    done = 0
-    for r in rows:
-        insert_biometric_log_postgres(r["sn"], dict(r))
-        done += 1
-        if done % 1000 == 0:
-            print(f"[SYNC] {done}/{total}")
-    print(f"[SYNC] Attlog sync complete: {done} records.")
-
-
-def sync_users_to_postgres() -> None:
-    pgc = pg()
-    if pgc is None:
+    if not rows:
         return
-    conn = db()
-    rows = conn.execute(
-        "SELECT DISTINCT pin, name FROM users WHERE name IS NOT NULL AND TRIM(name) != ''"
-    ).fetchall()
-    conn.close()
-    updated = 0
+
+    by_sn: Dict[str, list] = {}
     for r in rows:
-        pin  = r["pin"]
-        name = (r["name"] or "").strip()
-        if not name:
-            continue
-        parts = name.split(" ", 1)
-        first = parts[0]
-        last  = parts[1] if len(parts) > 1 else None
-        try:
-            with pgc.cursor() as cur:
-                cur.execute("""
-                    UPDATE employees SET full_name=%s, first_name=%s, last_name=%s
-                    WHERE biometric_id=%s
-                """, (name, first, last, pin))
-                if cur.rowcount > 0:
-                    updated += 1
-        except Exception as e:
-            print(f"[SYNC] User sync failed PIN={pin}: {e}")
-    if updated:
-        print(f"[SYNC] Updated {updated} employee names.")
+        by_sn.setdefault(r["sn"], []).append({
+            "pin":      r["pin"],
+            "time":     r["time"],
+            "status":   r["status"],
+            "verify":   r["verify"],
+            "workcode": r["workcode"],
+        })
+
+    for sn, records in by_sn.items():
+        print(f"[SYNC] Syncing {len(records)} pending records for device {sn}...")
+        push_device_to_api(sn, "")
+        push_logs_to_api(sn, records)
+
+    print(f"[SYNC] Startup sync complete.")
 
 # ============================================================================
 # ZKTECO PROTOCOL ROUTES
@@ -474,7 +395,10 @@ def home():
         f"<div class='card' style='text-align:center'><div class='num' style='color:#dc3545'>{a}</div>Punches</div>"
         f"</div><div class='card'><h3>Latest Punches</h3>"
         f"<table><tr><th>PIN</th><th>Name</th><th>Time</th><th>Status</th></tr>{trs}</table></div>"
-        f"<div class='card'><b>ADMS Server URL:</b> <code>{PUBLIC_BASE_URL}/iclock/cdata</code></div>"
+        f"<div class='card'>"
+        f"<b>ADMS Server URL:</b> <code>{PUBLIC_BASE_URL}/iclock/cdata</code><br>"
+        f"<small style='color:#666'>API forwarding to: {API_BASE_URL}</small>"
+        f"</div>"
     )
     return _BASE.format(body=body)
 
@@ -581,9 +505,9 @@ def api_stats():
 # ============================================================================
 
 if __name__ == "__main__":
-    ensure_db_settings()
     init_db()
-    sync_attlogs_to_postgres()
-    sync_users_to_postgres()
-    print(f"[ZKTeco Push] Listening on port {APP_PORT}  |  DB: {DB_PATH}")
+    sync_pending_to_api()
+    print(f"[ZKTeco Push] Listening on {APP_HOST}:{APP_PORT}")
+    print(f"[ZKTeco Push] Public URL: {PUBLIC_BASE_URL}/iclock/cdata")
+    print(f"[ZKTeco Push] Forwarding to API: {API_BASE_URL}")
     app.run(host=APP_HOST, port=APP_PORT, debug=False, use_reloader=False)
