@@ -51,16 +51,29 @@ function DevicesTab() {
 
   const [editId, setEditId] = useState<number | null>(null);
   const [branchForm, setBranchForm] = useState<BranchForm>({ branchId: 0, name: "" });
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   function openEdit(d: any) {
     setBranchForm({ branchId: d.branchId || 0, name: d.name });
     setEditId(d.id);
+    setSuccessMsg(null);
   }
   function handleSave() {
     if (!editId) return;
     update.mutate(
       { id: editId, data: { branchId: branchForm.branchId || null, name: branchForm.name } },
-      { onSuccess: () => setEditId(null) }
+      {
+        onSuccess: (result: any) => {
+          setEditId(null);
+          const created = result?.employeesCreated ?? 0;
+          if (created > 0) {
+            setSuccessMsg(`Branch assigned. ${created} employee${created !== 1 ? "s" : ""} automatically created from device logs.`);
+          } else if (branchForm.branchId) {
+            setSuccessMsg("Branch assigned. No new employees found in device logs — they will be created automatically when attendance data syncs.");
+          }
+          setTimeout(() => setSuccessMsg(null), 8000);
+        }
+      }
     );
   }
 
@@ -75,6 +88,13 @@ function DevicesTab() {
           <RefreshCw className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      {successMsg && (
+        <div className="flex items-start gap-2 bg-emerald-50 border border-emerald-200 px-4 py-3 rounded-lg text-sm text-emerald-800">
+          <span className="text-emerald-600 font-bold mt-0.5">✓</span>
+          <span>{successMsg}</span>
+        </div>
+      )}
 
       {editId && (
         <Card className="p-4 border-primary/30 bg-primary/5">

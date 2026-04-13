@@ -3,7 +3,7 @@
 ZKTeco SQLite -> Node.js Attendance App Sync Tool
 ==================================================
 Reads from the Python ADMS server's push.db (SQLite) and forwards
-device registrations and attendance logs to the Node.js app via ADMS protocol.
+device registrations, user names, and attendance logs to the Node.js app.
 
 Run this alongside the Python ADMS server on the same machine.
 
@@ -33,9 +33,11 @@ PUSH_DB       = os.environ.get("PUSH_DB",        "push.db")
 API_URL       = os.environ.get("API_URL",         "http://localhost:3000").rstrip("/")
 SYNC_INTERVAL = int(os.environ.get("SYNC_INTERVAL", "30"))
 ADMS_URL      = f"{API_URL}/iclock/cdata"
+SYNC_USERS_URL = f"{API_URL}/api/biometric/sync-users"
 
 # Track which attlog IDs have already been synced this session
 _synced_ids: set = set()
+_users_synced: bool = False
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -72,6 +74,37 @@ def sync_devices() -> None:
                 print(f"  [device] {sn} -> HTTP {r.status_code}")
         except Exception as e:
             print(f"  [device] {sn} -> ERROR: {e}")
+
+
+# ── Sync user names ────────────────────────────────────────────────────────────
+
+def sync_users() -> None:
+    global _users_synced
+    conn = open_db()
+    rows = conn.execute(
+        "SELECT sn, pin, name FROM users WHERE name IS NOT NULL AND TRIM(name) != '' ORDER BY id"
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return
+
+    users = [{"sn": r["sn"], "pin": r["pin"], "name": r["name"]} for r in rows]
+
+    try:
+        resp = requests.post(
+            SYNC_USERS_URL,
+            json={"users": users},
+            timeout=10,
+        )
+        data = resp.json()
+        updated = data.get("updated", 0)
+        if updated > 0:
+            print(f"  [users] Updated {updated} employee names from device")
+        else:
+            print(f"  [users] {len(users)} users checked, no new name updates")
+    except Exception as e:
+        print(f"  [users] ERROR syncing user names: {e}")
 
 
 # ── Sync attendance logs ───────────────────────────────────────────────────────
@@ -139,7 +172,7 @@ def main() -> None:
     print("  ZKTeco SQLite -> Node.js Sync Tool")
     print("=" * 60)
     print(f"  push.db  : {os.path.abspath(PUSH_DB)}")
-    print(f"  API URL  : {ADMS_URL}")
+    print(f"  API URL  : {API_URL}")
     print(f"  Interval : {SYNC_INTERVAL}s")
     print("=" * 60)
     print()
@@ -159,6 +192,7 @@ def main() -> None:
         print(f"[{ts()}] Sync #{run} ...")
         try:
             sync_devices()
+            sync_users()
             sync_attlogs()
         except Exception as e:
             print(f"  ERROR during sync: {e}")
