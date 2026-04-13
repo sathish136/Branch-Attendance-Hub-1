@@ -3,47 +3,33 @@
 ZKTeco PUSH Server - Attendance Management System
 ==================================================
 Listens on port 3333 for ZKTeco device connections.
-Stores all data locally in push.db (SQLite) AND syncs directly to the
-attendance app's Postgres database (biometric_devices + biometric_logs tables).
-
-No separate sync tool needed — run only this file.
+Stores data locally in push.db (SQLite) AND syncs directly to the
+attendance app's Postgres database (biometric_devices + biometric_logs).
 
 Usage:
-    python push.py --console       (console mode)
-    python push.py                 (system tray mode, requires pystray + Pillow)
-    python push.py --service       (headless/service mode)
+    python push.py            (starts server)
 
-Postgres connection is configured in ensure_db_settings() below.
+Configure Postgres connection in ensure_db_settings() below.
 """
 
 from __future__ import annotations
 
-import json
-import locale
 import os
 import re
 import sys
 import sqlite3
-import threading
-import webbrowser
-import shutil
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
-from urllib.parse import urlparse, unquote
-
-# When True, all print() is suppressed (used in tray mode)
-_quiet = False
-
-class _QuietWriter:
-    def write(self, _s: str) -> None: ...
-    def flush(self) -> None: ...
 
 import psycopg2
+from flask import Flask, request, Response, jsonify
 
-from flask import Flask, request, Response, url_for, render_template_string, abort, jsonify
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
 APP_HOST = "0.0.0.0"
-APP_PORT = 3333  # ZKTeco PUSH / ADMS port
+APP_PORT = 3333
 
 
 def _app_dir() -> str:
@@ -53,273 +39,21 @@ def _app_dir() -> str:
 
 
 DB_PATH = os.path.join(_app_dir(), "push.db")
-CONFIG_PATH = os.path.join(_app_dir(), "zk_push_config.json")
 
-
-def _ensure_default_config_next_to_app() -> None:
-    if os.path.exists(CONFIG_PATH):
-        return
-    bundled_dir = getattr(sys, "_MEIPASS", "")
-    if not bundled_dir:
-        return
-    src = os.path.join(bundled_dir, "zk_push_config.json")
-    if not os.path.exists(src):
-        return
-    try:
-        shutil.copyfile(src, CONFIG_PATH)
-    except Exception:
-        pass
-
-# Optional Postgres connection (same DATABASE_URL as Node app)
+# Postgres connection URL — edit these values to match your database
 PG_DATABASE_URL: Optional[str] = None
 pg_conn = None
 
 
-def _detect_language() -> str:
-    """
-    Detect system UI language (Windows native language) and return
-    a simple two-letter code like 'en', 'si', 'ta'.
-    Can be overridden with ZK_LANG environment variable.
-    """
-    env = (os.environ.get("ZK_LANG") or "").strip().lower()
-    if env:
-        return env
-    try:
-        loc, _ = locale.getdefaultlocale()
-        if not loc:
-            return "en"
-        return loc.split("_")[0].lower()
-    except Exception:
-        return "en"
-
-
-LANG = _detect_language()
-
-
-TRANSLATIONS: Dict[str, Dict[str, str]] = {
-    # Sinhala (Sri Lanka) – approximate translations
-    "si": {
-        "wizard_title": "ZKTeco PUSH - පළමු වාර සැකසීම",
-        "wizard_welcome": "ZKTeco PUSH සේවාදායකයට පිළිගැනීමයි",
-        "wizard_text": "මෙම පළමු වරේදී ඔබට ස්ථානික SQLite දත්ත ගබඩාව (push.db) පමණක්\nභාවිතා කිරීමටද නැතහොත් Postgres සේවාදායකයකට දත්ත යැවීමටද තේරීම කළ හැක.",
-        "wizard_pg_checkbox": "Attendance දත්ත Postgres දත්ත ගබඩාවකට ද යවන්න",
-        "wizard_pg_details": "Postgres විස්තර (අවශ්‍ය නම්):",
-        "host": "Host",
-        "port": "Port",
-        "database": "Database නම",
-        "user": "User නාමය",
-        "password": "Password",
-        "wizard_missing_pg": "Postgres භාවිතා කිරීමට නම් Database හා User අවම වශයෙන් දාන්න,\nනැතහොත් Postgres විකල්පය අක්‍රීය කර SQLite පමණක් භාවිතා කරන්න.",
-        "wizard_missing_pg_title": "තොරතුරු අස්පුරනය",
-        "wizard_start_server": "Server ආරම්භ කරන්න",
-        "close": "වැසිය",
-        "cancel": "අවලංගුයි",
-        "device_status_title": "ZKTeco PUSH - උපාංග තත්ත්වය",
-        "device_status_header": "උපාංග තත්ත්වය",
-        "server_running_on_port": "Server ක්‍රියාත්මක වන්නේ port {port} මතය",
-        "refresh": "නැවත ලෝඩ් කරන්න",
-        "open_dashboard": "Dashboard තෙරන්න",
-    },
-    # Tamil (Sri Lanka / India) – approximate translations
-    "ta": {
-        "wizard_title": "ZKTeco PUSH - முதல் அமைப்பு",
-        "wizard_welcome": "ZKTeco PUSH Server-க்கு வரவேற்கிறோம்",
-        "wizard_text": "முதல் முறையாக நீங்கள் உள்ளூர் SQLite தரவுத்தளத்தை (push.db) மட்டும்\nபயன்படுத்தவா அல்லது Postgres-க்கும் தரவை அனுப்பவா என்பதை தேர்ந்தெடுக்கலாம்.",
-        "wizard_pg_checkbox": "Attendance தரவை Postgres தரவுத்தளத்திற்கும் அனுப்பவும்",
-        "wizard_pg_details": "Postgres விவரங்கள் (விரும்பினால்):",
-        "host": "Host",
-        "port": "Port",
-        "database": "Database பெயர்",
-        "user": "User பெயர்",
-        "password": "Password",
-        "wizard_missing_pg": "Postgres பயன்படுத்த குறைந்தது Database மற்றும் User நிரப்பவும்,\nஅல்லது Postgres விருப்பத்தை அணைத்து SQLite மட்டும் பயன்படுத்தவும்.",
-        "wizard_missing_pg_title": "தகவல் முழுமையில்லை",
-        "wizard_start_server": "Server ஐ தொடங்கு",
-        "close": "மூடு",
-        "cancel": "ரத்து செய்",
-        "device_status_title": "ZKTeco PUSH - சாதன நிலை",
-        "device_status_header": "சாதன நிலை",
-        "server_running_on_port": "Server {port} port இல் இயக்கப்படுகிறது",
-        "refresh": "Refresh",
-        "open_dashboard": "Dashboard திற",
-    },
-}
-
-
-def _(key: str, default: str) -> str:
-    """Simple translation helper based on detected Windows language."""
-    return TRANSLATIONS.get(LANG, {}).get(key, default)
-
-
-def _load_config() -> Dict[str, object]:
-    """Load JSON config from disk (if any)."""
-    _ensure_default_config_next_to_app()
-    if not os.path.exists(CONFIG_PATH):
-        return {}
-    try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            return data
-    except Exception as e:
-        print(f"[CFG] Failed to load config: {e}")
-    return {}
-
-
-def _save_config(cfg: Dict[str, object]) -> None:
-    """Persist JSON config to disk."""
-    try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2)
-    except Exception as e:
-        print(f"[CFG] Failed to save config: {e}")
-
-
-def _build_pg_url_from_cfg(pg_cfg: Dict[str, str]) -> str:
-    host = (pg_cfg.get("host") or "localhost").strip()
-    port = (pg_cfg.get("port") or "5432").strip()
-    database = (pg_cfg.get("database") or "postal").strip()
-    user = (pg_cfg.get("user") or "postgres").strip()
-    password = (pg_cfg.get("password") or "556656").strip()
-    if not database or not user:
-        return ""
-    return f"postgresql://{user}:{password}@{host}:{port}/{database}"
-
-
-def _run_first_time_setup_wizard() -> Dict[str, object]:
-    """
-    Simple Tkinter-based first-time setup wizard to choose DB options
-    and (optionally) configure Postgres connection details.
-    """
-    import tkinter as tk
-    from tkinter import ttk, messagebox
-
-    root = tk.Tk()
-    root.title(_("wizard_title", "ZKTeco PUSH - First-time setup"))
-    root.resizable(False, False)
-
-    main = ttk.Frame(root, padding=12)
-    main.grid(sticky="nsew")
-
-    ttk.Label(
-        main,
-        text=_("wizard_welcome", "Welcome to ZKTeco PUSH Server"),
-        font=("Segoe UI", 11, "bold"),
-    ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
-
-    ttk.Label(
-        main,
-        text=_(
-            "wizard_text",
-            "On this first run you can choose whether to use only the local\n"
-            "SQLite database (push.db) or also sync punches to a Postgres server.",
-        ),
-        justify="left",
-    ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 8))
-
-    pg_var = tk.IntVar(value=0)
-    ttk.Checkbutton(
-        main,
-        text=_("wizard_pg_checkbox", "Also sync attendance to a Postgres database"),
-        variable=pg_var,
-    ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 8))
-
-    ttk.Label(
-        main,
-        text=_("wizard_pg_details", "Postgres details (optional):"),
-        font=("Segoe UI", 9, "bold"),
-    ).grid(
-        row=3, column=0, columnspan=2, sticky="w", pady=(4, 4)
-    )
-
-    host_var = tk.StringVar(value="localhost")
-    port_var = tk.StringVar(value="5432")
-    db_var = tk.StringVar(value="postal")
-    user_var = tk.StringVar(value="postgres")
-    pwd_var = tk.StringVar(value="556656")
-
-    ttk.Label(main, text=_("host", "Host") + ":").grid(row=4, column=0, sticky="e", padx=(0, 6))
-    ttk.Entry(main, textvariable=host_var, width=26).grid(row=4, column=1, sticky="w")
-    ttk.Label(main, text=_("port", "Port") + ":").grid(row=5, column=0, sticky="e", padx=(0, 6))
-    ttk.Entry(main, textvariable=port_var, width=8).grid(row=5, column=1, sticky="w")
-
-    ttk.Label(main, text=_("database", "Database") + ":").grid(row=6, column=0, sticky="e", padx=(0, 6))
-    ttk.Entry(main, textvariable=db_var, width=26).grid(row=6, column=1, sticky="w")
-    ttk.Label(main, text=_("user", "User") + ":").grid(row=7, column=0, sticky="e", padx=(0, 6))
-    ttk.Entry(main, textvariable=user_var, width=26).grid(row=7, column=1, sticky="w")
-    ttk.Label(main, text=_("password", "Password") + ":").grid(row=8, column=0, sticky="e", padx=(0, 6))
-    ttk.Entry(main, textvariable=pwd_var, show="*", width=26).grid(row=8, column=1, sticky="w")
-
-    result: Dict[str, object] = {}
-
-    def on_ok() -> None:
-        use_pg = bool(pg_var.get())
-        cfg: Dict[str, object] = {"use_postgres": use_pg}
-        if use_pg:
-            pg_cfg = {
-                "host": host_var.get().strip() or "localhost",
-                "port": port_var.get().strip() or "5432",
-                "database": db_var.get().strip(),
-                "user": user_var.get().strip(),
-                "password": pwd_var.get(),
-            }
-            url = _build_pg_url_from_cfg(pg_cfg)
-            if not url:
-                messagebox.showerror(
-                    _("wizard_missing_pg_title", "Missing details"),
-                    _(
-                        "wizard_missing_pg",
-                        "Please fill in at least Database and User for Postgres,\n"
-                        "or uncheck the Postgres option to use SQLite only.",
-                    ),
-                )
-                return
-            pg_cfg["url"] = url
-            cfg["postgres"] = pg_cfg
-        result.update(cfg)
-        _save_config(cfg)
-
-        root.destroy()
-
-    def on_cancel() -> None:
-        # Still save that we completed wizard and chose SQLite-only
-        cfg = {"use_postgres": False}
-        result.update(cfg)
-        _save_config(cfg)
-        root.destroy()
-
-    btn_frame = ttk.Frame(main)
-    btn_frame.grid(row=9, column=0, columnspan=2, sticky="e", pady=(10, 0))
-    ttk.Button(btn_frame, text=_("wizard_start_server", "Start Server"), command=on_ok).grid(
-        row=0, column=0, padx=(0, 8)
-    )
-    ttk.Button(btn_frame, text=_("cancel", "Cancel"), command=on_cancel).grid(row=0, column=1)
-
-    root.mainloop()
-    return result
-
-
-def ensure_db_settings(interactive: bool = False) -> None:
-    """
-    Decide which DB configuration to use.
-
-    - Always uses local SQLite (push.db).
-    - Optionally enables Postgres sync via DATABASE_URL, either from:
-      * existing .env / environment
-      * saved JSON config
-      * first-time setup wizard (interactive modes only)
-    """
+def ensure_db_settings() -> None:
+    """Configure Postgres connection. Edit the values below."""
     global PG_DATABASE_URL
-
-    PG_DATABASE_URL = _build_pg_url_from_cfg(
-        {
-            "host": "localhost",
-            "port": "5432",
-            "database": "postal",
-            "user": "postgres",
-            "password": "556656",
-        }
-    )
+    host     = os.environ.get("PG_HOST",     "localhost")
+    port     = os.environ.get("PG_PORT",     "5432")
+    database = os.environ.get("PG_DATABASE", "postal")
+    user     = os.environ.get("PG_USER",     "postgres")
+    password = os.environ.get("PG_PASSWORD", "556656")
+    PG_DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
 
 def pg() -> Optional[psycopg2.extensions.connection]:
@@ -336,26 +70,26 @@ def pg() -> Optional[psycopg2.extensions.connection]:
         pg_conn = None
         return None
 
+
 app = Flask(__name__)
 
 # ============================================================================
-# DATABASE HELPERS
+# SQLITE HELPERS
 # ============================================================================
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
 
 def db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def init_db() -> None:
-    """Initialize database tables if they don't exist"""
     conn = db()
     cur = conn.cursor()
-
-    # Devices table - tracks connected ZKTeco machines
     cur.execute("""
     CREATE TABLE IF NOT EXISTS devices (
         sn TEXT PRIMARY KEY,
@@ -364,10 +98,7 @@ def init_db() -> None:
         pushver TEXT,
         language TEXT,
         info TEXT
-    )
-    """)
-
-    # Users table - employees/users on the machine
+    )""")
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -382,10 +113,7 @@ def init_db() -> None:
         raw_line TEXT,
         updated_at_utc TEXT,
         UNIQUE(sn, pin)
-    )
-    """)
-
-    # Attendance log - all attendance records
+    )""")
     cur.execute("""
     CREATE TABLE IF NOT EXISTS attlog (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -401,42 +129,34 @@ def init_db() -> None:
         timeoffset TEXT,
         raw_line TEXT,
         received_at_utc TEXT
-    )
-    """)
-
+    )""")
     conn.commit()
     conn.close()
-    print(f"[DB] Initialized database: {DB_PATH}")
+    print(f"[DB] SQLite initialized: {DB_PATH}")
 
 # ============================================================================
 # PARSING HELPERS
 # ============================================================================
 
 def parse_kv_line(line: str) -> Dict[str, str]:
-    """Parse KEY=VALUE format (handles tabs and spaces)"""
+    """Parse KEY=VALUE format (handles tabs and spaces)."""
     parts = re.split(r"[\t\r\n]+", line.strip())
     joined = " ".join(p.strip() for p in parts if p.strip())
-
     kv: Dict[str, str] = {}
     for m in re.finditer(r"(\w+)=([^=]*?)(?=\s+\w+=|$)", joined):
-        k = m.group(1).strip()
-        v = m.group(2).strip()
-        kv[k] = v
+        kv[m.group(1).strip()] = m.group(2).strip()
     return kv
 
+
 def parse_attlog_record(line: str) -> Optional[Dict[str, str]]:
-    """Parse attendance record (PIN, Time, Status, Verify, Workcode, etc.)"""
+    """Parse ZKTeco attendance record line."""
     raw = line.strip()
     if not raw:
         return None
-
     cols = re.split(r"[\t ]+", raw)
     if len(cols) < 4:
         return None
-
     pin = cols[0]
-
-    # Time format: "YYYY-MM-DD HH:MM:SS"
     if len(cols) >= 3 and re.match(r"\d{4}-\d{2}-\d{2}", cols[1]) and re.match(r"\d{2}:\d{2}:\d{2}", cols[2]):
         time_str = f"{cols[1]} {cols[2]}"
         idx = 3
@@ -450,53 +170,26 @@ def parse_attlog_record(line: str) -> Optional[Dict[str, str]]:
     status = get(idx); idx += 1
     verify = get(idx); idx += 1
     workcode = get(idx); idx += 1
-
     maskflag = temperature = convtemperature = timeoffset = ""
     if len(cols) >= 4:
         tail = cols[-4:]
         if len(tail) == 4:
             maskflag, temperature, convtemperature, timeoffset = tail
-
     return {
-        "pin": pin,
-        "time": time_str,
-        "status": status,
-        "verify": verify,
-        "workcode": workcode,
-        "maskflag": maskflag,
-        "temperature": temperature,
-        "convtemperature": convtemperature,
+        "pin": pin, "time": time_str, "status": status,
+        "verify": verify, "workcode": workcode, "maskflag": maskflag,
+        "temperature": temperature, "convtemperature": convtemperature,
         "timeoffset": timeoffset,
     }
 
-def get_device_status() -> List[Dict[str, str]]:
-    """Return list of devices with last seen, IP, and attlog count for mini GUI."""
-    conn = db()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT d.sn, d.last_seen_utc, d.last_ip, d.pushver,
-               (SELECT COUNT(*) FROM attlog a WHERE a.sn = d.sn) AS attlog_count
-        FROM devices d
-        ORDER BY d.last_seen_utc DESC
-    """)
-    rows = cur.fetchall()
-    conn.close()
-    return [
-        {
-            "sn": r["sn"] or "-",
-            "last_seen": (r["last_seen_utc"] or "-")[:19].replace("T", " "),
-            "last_ip": r["last_ip"] or "-",
-            "pushver": r["pushver"] or "-",
-            "records": str(r["attlog_count"]),
-        }
-        for r in rows
-    ]
+# ============================================================================
+# DEVICE / USER / ATTLOG STORAGE
+# ============================================================================
 
 def upsert_device(sn: str, ip: str, pushver: str = "", language: str = "", info: str = "") -> None:
-    """Store or update device info in SQLite and Postgres biometric_devices"""
+    """Save device in SQLite and register it in Postgres biometric_devices."""
     conn = db()
-    cur = conn.cursor()
-    cur.execute("""
+    conn.execute("""
     INSERT INTO devices (sn, last_seen_utc, last_ip, pushver, language, info)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(sn) DO UPDATE SET
@@ -509,7 +202,6 @@ def upsert_device(sn: str, ip: str, pushver: str = "", language: str = "", info:
     conn.commit()
     conn.close()
 
-    # Sync to Postgres biometric_devices table
     pgc = pg()
     if pgc is None:
         return
@@ -520,228 +212,214 @@ def upsert_device(sn: str, ip: str, pushver: str = "", language: str = "", info:
                   (name, serial_number, model, ip_address, port, push_method, status, last_sync, is_active, created_at)
                 VALUES (%s, %s, 'ZKTeco', %s, 3333, 'zkpush', 'online', NOW(), true, NOW())
                 ON CONFLICT (serial_number) DO UPDATE SET
-                  status = 'online',
+                  status    = 'online',
                   last_sync = NOW(),
-                  ip_address = CASE WHEN EXCLUDED.ip_address != '' THEN EXCLUDED.ip_address
+                  ip_address = CASE WHEN EXCLUDED.ip_address != ''
+                                    THEN EXCLUDED.ip_address
                                     ELSE biometric_devices.ip_address END
             """, (f"Device {sn}", sn, ip or ""))
     except Exception as e:
-        print(f"[PG] Failed to upsert biometric_devices for SN={sn}: {e}")
+        print(f"[PG] biometric_devices upsert failed SN={sn}: {e}")
+
 
 def upsert_user(sn: str, kv: Dict[str, str], raw_line: str) -> None:
-    """Store or update employee/user info in SQLite and sync name to Postgres employee"""
+    """
+    Save employee/user from device in SQLite.
+    Syncs PIN (biometric_id) and name to the matching Postgres employee record.
+    """
     pin = kv.get("PIN") or kv.get("Pin") or ""
     if not pin:
         return
     name = kv.get("Name", "").strip()
 
+    # Save to SQLite
     conn = db()
-    cur = conn.cursor()
-    cur.execute("""
+    conn.execute("""
     INSERT INTO users (sn, pin, name, card, grp, tz, pri, verify, raw_line, updated_at_utc)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(sn, pin) DO UPDATE SET
-      name=excluded.name,
-      card=excluded.card,
-      grp=excluded.grp,
-      tz=excluded.tz,
-      pri=excluded.pri,
-      verify=excluded.verify,
-      raw_line=excluded.raw_line,
-      updated_at_utc=excluded.updated_at_utc
-    """, (
-        sn, pin,
-        name,
-        kv.get("Card", ""),
-        kv.get("Grp", ""),
-        kv.get("TZ", ""),
-        kv.get("Pri", ""),
-        kv.get("Verify", ""),
-        raw_line,
-        utc_now_iso(),
-    ))
+      name=excluded.name, card=excluded.card, grp=excluded.grp,
+      tz=excluded.tz, pri=excluded.pri, verify=excluded.verify,
+      raw_line=excluded.raw_line, updated_at_utc=excluded.updated_at_utc
+    """, (sn, pin, name, kv.get("Card", ""), kv.get("Grp", ""),
+          kv.get("TZ", ""), kv.get("Pri", ""), kv.get("Verify", ""),
+          raw_line, utc_now_iso()))
     conn.commit()
     conn.close()
 
-    # Update employee name in Postgres if a matching employee exists with this biometric_id
-    if name:
-        pgc = pg()
-        if pgc is not None:
-            try:
-                parts = name.split(" ", 1)
-                first = parts[0]
-                last = parts[1] if len(parts) > 1 else None
-                with pgc.cursor() as cur:
-                    cur.execute("""
-                        UPDATE employees
-                        SET full_name = %s, first_name = %s, last_name = %s
-                        WHERE biometric_id = %s
-                          AND (full_name LIKE %s OR full_name = '' OR full_name IS NULL)
-                    """, (name, first, last, pin, f"Employee {pin}"))
-            except Exception as e:
-                print(f"[PG] Failed to update employee name for PIN={pin}: {e}")
+    # Sync biometric_id and name to Postgres employee
+    if not name:
+        return
+    pgc = pg()
+    if pgc is None:
+        return
+    try:
+        parts = name.split(" ", 1)
+        first = parts[0]
+        last  = parts[1] if len(parts) > 1 else None
+        with pgc.cursor() as cur:
+            cur.execute("""
+                UPDATE employees
+                SET full_name = %s, first_name = %s, last_name = %s
+                WHERE biometric_id = %s
+            """, (name, first, last, pin))
+            if cur.rowcount > 0:
+                print(f"[PG] Updated employee name for biometric_id={pin}: {name}")
+    except Exception as e:
+        print(f"[PG] Employee name sync failed PIN={pin}: {e}")
+
 
 def insert_attlog(sn: str, rec: Dict[str, str], raw_line: str) -> None:
-    """Store attendance record"""
+    """Save attendance record to SQLite and Postgres biometric_logs."""
     conn = db()
-    cur = conn.cursor()
-    cur.execute("""
+    conn.execute("""
     INSERT INTO attlog (
       sn, pin, time, status, verify, workcode,
       maskflag, temperature, convtemperature, timeoffset,
       raw_line, received_at_utc
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        sn,
-        rec.get("pin", ""),
-        rec.get("time", ""),
-        rec.get("status", ""),
-        rec.get("verify", ""),
-        rec.get("workcode", ""),
-        rec.get("maskflag", ""),
-        rec.get("temperature", ""),
-        rec.get("convtemperature", ""),
-        rec.get("timeoffset", ""),
-        raw_line,
-        utc_now_iso(),
+        sn, rec.get("pin", ""), rec.get("time", ""), rec.get("status", ""),
+        rec.get("verify", ""), rec.get("workcode", ""), rec.get("maskflag", ""),
+        rec.get("temperature", ""), rec.get("convtemperature", ""),
+        rec.get("timeoffset", ""), raw_line, utc_now_iso(),
     ))
     conn.commit()
     conn.close()
-
-    # Also store into Postgres biometric_logs table
     insert_biometric_log_postgres(sn, rec, raw_line)
 
 
 def insert_biometric_log_postgres(sn: str, rec: Dict[str, str], raw_line: str) -> None:
     """
-    Insert a punch into the Postgres biometric_logs table.
-    Looks up the biometric_device by serial_number and links the employee if found.
-    Device time is assumed to be Sri Lanka time (IST, UTC+5:30) and stored as UTC.
+    Insert a punch into Postgres biometric_logs.
+    Device time (Sri Lanka IST, UTC+5:30) is converted to UTC before saving.
     """
     pgc = pg()
     if pgc is None:
         return
 
-    pin = rec.get("pin") or ""
+    pin           = rec.get("pin") or ""
     punch_time_str = rec.get("time") or ""
-    status_code = rec.get("status") or "0"
+    status_code   = rec.get("status") or "0"
 
     if not pin or not sn or not punch_time_str:
         return
 
-    # Convert IST device time -> UTC for storage
+    # Convert IST → UTC
     punch_value: object = punch_time_str
     try:
-        local_dt = datetime.strptime(punch_time_str, "%Y-%m-%d %H:%M:%S")
-        ist_dt = local_dt.replace(tzinfo=timezone(timedelta(hours=5, minutes=30)))
+        local_dt  = datetime.strptime(punch_time_str, "%Y-%m-%d %H:%M:%S")
+        ist_dt    = local_dt.replace(tzinfo=timezone(timedelta(hours=5, minutes=30)))
         punch_value = ist_dt.astimezone(timezone.utc).replace(tzinfo=None)
     except Exception:
         punch_value = punch_time_str
 
-    # Determine punch type from status code
-    if status_code == "0":
-        punch_type = "in"
-    elif status_code == "1":
-        punch_type = "out"
-    else:
-        punch_type = "unknown"
+    punch_type = "in" if status_code == "0" else "out" if status_code == "1" else "unknown"
 
     try:
         with pgc.cursor() as cur:
-            # Get the biometric_devices.id for this serial number
             cur.execute(
-                "SELECT id FROM biometric_devices WHERE serial_number = %s LIMIT 1",
-                (sn,),
-            )
+                "SELECT id FROM biometric_devices WHERE serial_number = %s LIMIT 1", (sn,))
             row = cur.fetchone()
             if not row:
                 print(f"[PG] Device SN={sn} not in biometric_devices, skipping log")
                 return
             device_id = row[0]
 
-            # Try to match existing employee by biometric_id = pin
             cur.execute(
-                "SELECT id FROM employees WHERE biometric_id = %s LIMIT 1",
-                (pin,),
-            )
-            emp_row = cur.fetchone()
+                "SELECT id FROM employees WHERE biometric_id = %s LIMIT 1", (pin,))
+            emp_row    = cur.fetchone()
             employee_id = emp_row[0] if emp_row else None
 
-            # Skip duplicate punches
-            cur.execute(
-                """
+            # Skip duplicates
+            cur.execute("""
                 SELECT 1 FROM biometric_logs
-                WHERE device_id = %s AND biometric_id = %s AND punch_time = %s
-                LIMIT 1
-                """,
-                (device_id, pin, punch_value),
-            )
+                WHERE device_id = %s AND biometric_id = %s AND punch_time = %s LIMIT 1
+            """, (device_id, pin, punch_value))
             if cur.fetchone():
                 return
 
-            cur.execute(
-                """
+            cur.execute("""
                 INSERT INTO biometric_logs
                   (device_id, employee_id, biometric_id, punch_time, punch_type, processed, created_at)
                 VALUES (%s, %s, %s, %s, %s, false, NOW())
-                """,
-                (device_id, employee_id, pin, punch_value, punch_type),
-            )
+            """, (device_id, employee_id, pin, punch_value, punch_type))
     except Exception as e:
-        print(f"[PG] Failed to insert biometric_log for PIN={pin} SN={sn}: {e}")
+        print(f"[PG] biometric_log insert failed PIN={pin} SN={sn}: {e}")
 
+# ============================================================================
+# STARTUP SYNC — SQLite → Postgres
+# ============================================================================
 
-def sync_sqlite_attendance_to_postgres() -> None:
-    """
-    One-time idempotent sync of all existing SQLite attendance records into
-    Postgres biometric_logs. Safe to run on every startup.
-    """
-    if not PG_DATABASE_URL:
-        print("[SYNC] DATABASE_URL not set, skipping SQLite -> Postgres sync.")
-        return
-
+def sync_attlogs_to_postgres() -> None:
+    """Sync all existing SQLite attendance records to Postgres biometric_logs on startup."""
     if pg() is None:
-        print("[SYNC] Could not connect to Postgres, skipping SQLite -> Postgres sync.")
+        print("[SYNC] Postgres unavailable, skipping attlog sync.")
         return
-
     conn = db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT COUNT(*) AS c FROM attlog")
-    total = cur.fetchone()["c"]
+    total = conn.execute("SELECT COUNT(*) AS c FROM attlog").fetchone()["c"]
     if not total:
         conn.close()
-        print("[SYNC] No attendance records in SQLite; nothing to sync.")
+        print("[SYNC] No attlog records in SQLite to sync.")
         return
-
-    print(f"[SYNC] Starting SQLite -> Postgres sync of {total} attendance records...")
-
-    cur.execute("""
-        SELECT sn, pin, time, status, verify, workcode,
-               maskflag, temperature, convtemperature, timeoffset, raw_line
-        FROM attlog ORDER BY id
-    """)
-
+    print(f"[SYNC] Syncing {total} attlog records to Postgres biometric_logs...")
+    rows = conn.execute(
+        "SELECT sn, pin, time, status, verify, workcode, maskflag, temperature, "
+        "convtemperature, timeoffset, raw_line FROM attlog ORDER BY id"
+    ).fetchall()
+    conn.close()
     processed = 0
-    for row in cur.fetchall():
-        rec = {
-            "pin": row["pin"] or "",
-            "time": row["time"] or "",
-            "status": row["status"] or "",
-            "verify": row["verify"] or "",
-            "workcode": row["workcode"] or "",
-            "maskflag": row["maskflag"] or "",
-            "temperature": row["temperature"] or "",
-            "convtemperature": row["convtemperature"] or "",
-            "timeoffset": row["timeoffset"] or "",
-        }
+    for row in rows:
+        rec = {k: row[k] or "" for k in ("pin","time","status","verify","workcode",
+                                           "maskflag","temperature","convtemperature","timeoffset")}
         insert_biometric_log_postgres(row["sn"], rec, row["raw_line"] or "")
         processed += 1
         if processed % 1000 == 0:
-            print(f"[SYNC] ...synced {processed}/{total} records to Postgres")
+            print(f"[SYNC] ...{processed}/{total} done")
+    print(f"[SYNC] Attlog sync complete: {processed} records.")
 
+
+def sync_users_to_postgres() -> None:
+    """
+    Sync all user names from SQLite to Postgres employees.
+    Updates full_name, first_name, last_name for every employee whose
+    biometric_id matches a PIN in the device's user table.
+    """
+    pgc = pg()
+    if pgc is None:
+        print("[SYNC] Postgres unavailable, skipping user sync.")
+        return
+    conn = db()
+    rows = conn.execute(
+        "SELECT DISTINCT pin, name FROM users "
+        "WHERE name IS NOT NULL AND TRIM(name) != '' ORDER BY pin"
+    ).fetchall()
     conn.close()
-    print(f"[SYNC] Completed sync: {processed} attendance records written to biometric_logs.")
+    if not rows:
+        print("[SYNC] No users in SQLite to sync.")
+        return
+    print(f"[SYNC] Syncing {len(rows)} user names to Postgres employees...")
+    updated = 0
+    for row in rows:
+        pin  = row["pin"]
+        name = (row["name"] or "").strip()
+        if not name:
+            continue
+        parts = name.split(" ", 1)
+        first = parts[0]
+        last  = parts[1] if len(parts) > 1 else None
+        try:
+            with pgc.cursor() as cur:
+                cur.execute("""
+                    UPDATE employees
+                    SET full_name = %s, first_name = %s, last_name = %s
+                    WHERE biometric_id = %s
+                """, (name, first, last, pin))
+                if cur.rowcount > 0:
+                    updated += 1
+        except Exception as e:
+            print(f"[SYNC] User name sync failed PIN={pin}: {e}")
+    print(f"[SYNC] User sync complete: {updated} employees updated.")
 
 # ============================================================================
 # ZKTECO PROTOCOL ENDPOINTS
@@ -750,23 +428,17 @@ def sync_sqlite_attendance_to_postgres() -> None:
 @app.route("/iclock/cdata", methods=["GET", "POST"])
 @app.route("/iclock/cdata.aspx", methods=["GET", "POST"])
 def iclock_cdata():
-    """Main device initialization and data upload endpoint"""
     sn = request.args.get("SN", "").strip()
     if not sn:
         return Response("Missing SN", status=400, mimetype="text/plain")
-
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
+    ip      = request.headers.get("X-Forwarded-For", request.remote_addr or "")
     pushver = request.args.get("pushver", "")
     language = request.args.get("language", "")
 
     if request.method == "GET":
+        upsert_device(sn, ip, pushver=pushver, language=language)
         options = request.args.get("options", "")
-
-        # Initialization handshake (options=all)
         if options == "all":
-            upsert_device(sn, ip, pushver=pushver, language=language)
-
-            # Send full configuration with zero stamps to force FULL re-sync of ALL 12000+ records
             body = (
                 f"GET OPTION FROM: {sn}\n"
                 f"ATTLOGStamp=0\n"
@@ -785,43 +457,29 @@ def iclock_cdata():
                 f"ServerVer=2.2.14\n"
                 f"PushProtVer={pushver or '2.2.14'}\n"
             )
-            print(f"[INIT] Device {sn} ({ip}) - Full sync request: ATTLOGStamp=0 (will download ALL 12000+ records)")
+            print(f"[INIT] Device {sn} ({ip}) connected — requesting full sync")
             return Response(body, status=200, mimetype="text/plain")
-
-        # Other GET requests
-        upsert_device(sn, ip, pushver=pushver, language=language)
         return Response("OK", status=200, mimetype="text/plain")
 
-    # POST: Device uploads data
+    # POST: device uploads data
     upsert_device(sn, ip, pushver=pushver, language=language)
-
-    table = request.args.get("table", "").strip().upper()
+    table    = request.args.get("table", "").strip().upper()
     raw_bytes = request.get_data() or b""
-    text = raw_bytes.decode("utf-8", errors="ignore").strip()
-
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    text     = raw_bytes.decode("utf-8", errors="ignore").strip()
+    lines    = [ln.strip() for ln in text.splitlines() if ln.strip()]
     processed = 0
 
-    # Log all POST data for debugging
-    if text:
-        print(f"[POST] Device {sn}: table={table}, lines={len(lines)}, data_size={len(raw_bytes)}")
-        if len(lines) > 0:
-            print(f"       First line: {lines[0][:100]}")
-
-    # Handle USER table (various formats - per protocol, USER data comes with table=OPERLOG)
     if table in ["USER", "ENROLLUSER", "CHGUSER", "OPERLOG"]:
         for ln in lines:
-            # Strip USER prefix if present, then parse KEY=VALUE format
             ln_stripped = ln.replace("USER", "", 1).strip() if ln.upper().startswith("USER") else ln
-            # Try to parse - USER table usually has PIN, Name, Card, etc
             if "PIN" in ln.upper() or "=" in ln:
                 kv = parse_kv_line(ln_stripped)
                 if "PIN" in kv or "Pin" in kv:
                     upsert_user(sn, kv, raw_line=ln)
                     processed += 1
         if processed > 0:
-            print(f"[{table or 'USER'}] Device {sn}: {processed} employee records")
-            return Response(f"OK: {processed}", status=200, mimetype="text/plain")
+            print(f"[USER] Device {sn}: {processed} user records received")
+        return Response(f"OK: {processed}", status=200, mimetype="text/plain")
 
     if table == "ATTLOG":
         for ln in lines:
@@ -829,14 +487,11 @@ def iclock_cdata():
             if rec:
                 insert_attlog(sn, rec, raw_line=ln)
                 processed += 1
-
         if processed > 0:
-            # Show progress
             conn = db()
             total = conn.execute("SELECT COUNT(*) c FROM attlog WHERE sn=?", (sn,)).fetchone()["c"]
             conn.close()
-            print(f"[ATTLOG] Device {sn}: +{processed} records (Total synced: {total})")
-
+            print(f"[ATTLOG] Device {sn}: +{processed} punches (total in db: {total})")
         return Response(f"OK: {processed}", status=200, mimetype="text/plain")
 
     return Response(f"OK: {len(lines)}", status=200, mimetype="text/plain")
@@ -845,580 +500,217 @@ def iclock_cdata():
 @app.route("/iclock/getrequest", methods=["GET"])
 @app.route("/iclock/getrequest.aspx", methods=["GET"])
 def iclock_getrequest():
-    """Device polling endpoint (heartbeat)"""
     sn = request.args.get("SN", "").strip()
     if sn:
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
+        ip   = request.headers.get("X-Forwarded-For", request.remote_addr or "")
         info = request.args.get("INFO", "")
         upsert_device(sn, ip, info=info)
-
-        # Check if device has sent USER data yet
         conn = db()
         user_count = conn.execute("SELECT COUNT(*) c FROM users WHERE sn=?", (sn,)).fetchone()["c"]
         conn.close()
-
-        # If no users yet, send download command to pull all USER data
         if user_count == 0:
-            body = (
-                f"C:Download\n"
-                f"table:USER\n"
-                f"Stamp=0\n"
-            )
-            return Response(body, status=200, mimetype="text/plain")
-
+            return Response("C:Download\ntable:USER\nStamp=0\n", status=200, mimetype="text/plain")
     return Response("OK", status=200, mimetype="text/plain")
 
 
 @app.route("/iclock/ping", methods=["GET", "POST"])
 def iclock_ping():
-    """Ping endpoint"""
     return Response("OK", status=200, mimetype="text/plain")
 
 
 @app.route("/iclock/devicecmd", methods=["POST"])
 def iclock_devicecmd():
-    """Device command response"""
     return Response("OK", status=200, mimetype="text/plain")
 
-@app.route("/admin/force-sync/<sn>", methods=["GET"])
+# ============================================================================
+# ADMIN / API ENDPOINTS
+# ============================================================================
+
+@app.route("/admin/force-sync/<sn>")
 def admin_force_sync(sn: str):
-    """Force a device to re-sync all data by marking stamps as expired"""
     conn = db()
     device = conn.execute("SELECT * FROM devices WHERE sn=?", (sn,)).fetchone()
     conn.close()
-
     if not device:
         return {"error": "Device not found"}, 404
-
-    # Send download command with zero timestamp to force full sync
-    body = (
-        f"C:Download\n"
-        f"table:USER\n"
-        f"Stamp=0\n"
-        f"---\n"
-        f"C:Download\n"
-        f"table:ATTLOG\n"
-        f"Stamp=0\n"
+    print(f"[ADMIN] Force-sync triggered for device {sn}")
+    return Response(
+        "C:Download\ntable:USER\nStamp=0\n---\nC:Download\ntable:ATTLOG\nStamp=0\n",
+        status=200, mimetype="text/plain"
     )
 
-    print(f"[ADMIN] Force-sync triggered for device {sn}")
-    return Response(body, status=200, mimetype="text/plain")
 
-@app.route("/admin/devices", methods=["GET"])
-def admin_devices():
-    """List all connected devices"""
-    conn = db()
-    devices = conn.execute("SELECT sn, last_seen_utc, last_ip, info FROM devices ORDER BY last_seen_utc DESC").fetchall()
-    conn.close()
-
-    html = "<h1>Connected Devices</h1><ul>"
-    for d in devices:
-        html += f"<li>{d['sn']} ({d['last_ip']}) - Last: {d['last_seen_utc']}<br/>"
-        html += f"  <a href='/admin/force-sync/{d['sn']}'>Force Sync</a></li>"
-    html += "</ul>"
-    return Response(html, status=200, mimetype="text/html")
-
-# ============================================================================
-# API ENDPOINTS
-# ============================================================================
-
-@app.route("/api/stats", methods=["GET"])
+@app.route("/api/stats")
 def api_stats():
-    """Get server statistics"""
     conn = db()
     devices_cnt = conn.execute("SELECT COUNT(*) c FROM devices").fetchone()["c"]
-    users_cnt = conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
-    attlog_cnt = conn.execute("SELECT COUNT(*) c FROM attlog").fetchone()["c"]
-
-    # Get per-device stats
+    users_cnt   = conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
+    attlog_cnt  = conn.execute("SELECT COUNT(*) c FROM attlog").fetchone()["c"]
     device_stats = conn.execute("""
-        SELECT d.sn, d.last_seen_utc, 
-               (SELECT COUNT(*) FROM users WHERE sn=d.sn) as user_count,
+        SELECT d.sn, d.last_seen_utc,
+               (SELECT COUNT(*) FROM users  WHERE sn=d.sn) as user_count,
                (SELECT COUNT(*) FROM attlog WHERE sn=d.sn) as att_count
-        FROM devices d
-        ORDER BY d.last_seen_utc DESC
+        FROM devices d ORDER BY d.last_seen_utc DESC
     """).fetchall()
-
     conn.close()
-
     return jsonify({
         "total_devices": devices_cnt,
-        "total_users": users_cnt,
+        "total_users":   users_cnt,
         "total_attendance_records": attlog_cnt,
-        "sync_progress": "Syncing all historical attendance data (up to 12000+ records per device)",
-        "devices": [{
-            "sn": d["sn"],
-            "last_seen": d["last_seen_utc"],
-            "employees": d["user_count"],
-            "attendance_records": d["att_count"]
-        } for d in device_stats],
-        "server_time": utc_now_iso()
+        "devices": [{"sn": d["sn"], "last_seen": d["last_seen_utc"],
+                     "employees": d["user_count"], "attendance_records": d["att_count"]}
+                    for d in device_stats],
+        "server_time": utc_now_iso(),
     })
 
 # ============================================================================
-# WEB UI
+# SIMPLE WEB DASHBOARD
 # ============================================================================
 
-BASE_HTML = """
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>ZKTeco Push Server</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-    .container { max-width: 1200px; margin: 0 auto; }
-    a { color: #007bff; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .card { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 10px 0; background: white; }
-    .stat-card { text-align: center; }
-    .stat-number { font-size: 36px; font-weight: bold; color: #007bff; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border-bottom: 1px solid #eee; padding: 10px; text-align: left; }
-    th { background: #f9f9f9; font-weight: bold; }
-    .muted { color: #666; font-size: 12px; }
-    .topnav { margin-bottom: 20px; }
-    .topnav a { margin-right: 15px; font-size: 14px; }
-    input, select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-    button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-    button:hover { background: #0056b3; }
-    .warning { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 4px; margin: 10px 0; }
-    .success { background: #d4edda; border: 1px solid #28a745; padding: 10px; border-radius: 4px; color: #155724; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="topnav">
-      <a href="/"><b>Dashboard</b></a>
-      <a href="/devices">Devices</a>
-      <a href="/users">Employees</a>
-      <a href="/attendance">Attendance</a>
-    </div>
-    <hr>
-    {CONTENT}
-  </div>
-</body>
-</html>
-"""
+_BASE = """<!doctype html><html><head><meta charset="utf-8">
+<title>ZKTeco Push Server</title>
+<style>body{{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5}}
+.container{{max-width:1200px;margin:0 auto}}
+.card{{border:1px solid #ddd;border-radius:8px;padding:15px;margin:10px 0;background:white}}
+.stat-number{{font-size:36px;font-weight:bold;color:#007bff}}
+table{{border-collapse:collapse;width:100%}}
+th,td{{border-bottom:1px solid #eee;padding:10px;text-align:left}}
+th{{background:#f9f9f9;font-weight:bold}}
+.muted{{color:#666;font-size:12px}}
+nav a{{margin-right:15px;color:#007bff;text-decoration:none}}
+nav{{margin-bottom:20px}}
+</style></head><body><div class="container">
+<nav><a href="/"><b>Dashboard</b></a><a href="/devices">Devices</a>
+<a href="/users">Users</a><a href="/attendance">Attendance</a></nav><hr>{body}
+</div></body></html>"""
+
 
 @app.route("/")
 def home():
-    """Dashboard"""
     conn = db()
-    devices_cnt = conn.execute("SELECT COUNT(*) c FROM devices").fetchone()["c"]
-    users_cnt = conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
-    attlog_cnt = conn.execute("SELECT COUNT(*) c FROM attlog").fetchone()["c"]
-
-    latest_devices = conn.execute(
-        "SELECT sn, last_seen_utc, last_ip FROM devices ORDER BY last_seen_utc DESC LIMIT 5"
+    d = conn.execute("SELECT COUNT(*) c FROM devices").fetchone()["c"]
+    u = conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
+    a = conn.execute("SELECT COUNT(*) c FROM attlog").fetchone()["c"]
+    latest = conn.execute(
+        "SELECT a.pin, u.name, a.time, a.status FROM attlog a "
+        "LEFT JOIN users u ON u.sn=a.sn AND u.pin=a.pin ORDER BY a.id DESC LIMIT 20"
     ).fetchall()
-
-    latest_att = conn.execute("""
-        SELECT a.pin, u.name as uname, a.time, a.status 
-        FROM attlog a 
-        LEFT JOIN users u ON u.sn=a.sn AND u.pin=a.pin 
-        ORDER BY a.id DESC LIMIT 15
-    """).fetchall()
-
     conn.close()
+    rows = "".join(
+        f"<tr><td>{r['pin']}</td><td>{r['name'] or '-'}</td>"
+        f"<td>{r['time']}</td><td><b>{r['status']}</b></td></tr>"
+        for r in latest
+    ) or "<tr><td colspan=4 style='text-align:center;color:#999'>No records yet</td></tr>"
+    body = (
+        f"<h2>ZKTeco Push Server</h2>"
+        f"<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:15px'>"
+        f"<div class='card' style='text-align:center'><div class='stat-number'>{d}</div>Devices</div>"
+        f"<div class='card' style='text-align:center'><div class='stat-number' style='color:#28a745'>{u}</div>Users</div>"
+        f"<div class='card' style='text-align:center'><div class='stat-number' style='color:#dc3545'>{a}</div>Punch Records</div>"
+        f"</div>"
+        f"<div class='card'><h3>Latest Attendance</h3>"
+        f"<table><tr><th>PIN</th><th>Name</th><th>Time</th><th>Status</th></tr>{rows}</table></div>"
+        f"<div class='card'><p>ADMS endpoint: <code>http://&lt;this-server&gt;:{APP_PORT}/iclock/cdata</code></p></div>"
+    )
+    return _BASE.format(body=body)
 
-    html = BASE_HTML.replace("{CONTENT}", """
-    <h1>🕐 ZKTeco PUSH Server Dashboard</h1>
-
-    <div class="grid">
-      <div class="card stat-card">
-        <div class="stat-number">""" + str(devices_cnt) + """</div>
-        <div>Devices Connected</div>
-      </div>
-      <div class="card stat-card">
-        <div class="stat-number" style="color: #28a745;">""" + str(users_cnt) + """</div>
-        <div>Employees</div>
-      </div>
-      <div class="card stat-card">
-        <div class="stat-number" style="color: #dc3545;">""" + str(attlog_cnt) + """</div>
-        <div>Attendance Records</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Recent Devices</h3>
-      <table>
-        <tr><th>Serial Number</th><th>Last Seen</th><th>IP Address</th></tr>
-    """ + ("".join([f"""        <tr>
-          <td><a href="/devices/{d['sn']}">{d['sn']}</a></td>
-          <td class="muted">{d['last_seen_utc']}</td>
-          <td class="muted">{d['last_ip']}</td>
-        </tr>
-    """ for d in latest_devices]) if latest_devices else '<tr><td colspan="3" style="text-align: center; color: #999;">No devices yet</td></tr>') + """
-      </table>
-    </div>
-
-    <div class="card">
-      <h3>Latest Attendance Records</h3>
-      <table>
-        <tr><th>PIN</th><th>Employee Name</th><th>Time</th><th>Status</th></tr>
-    """ + ("".join([f"""        <tr>
-          <td><b>{a['pin']}</b></td>
-          <td>{a['uname'] or '-'}</td>
-          <td class="muted">{a['time']}</td>
-          <td><b>{a['status']}</b></td>
-        </tr>
-    """ for a in latest_att]) if latest_att else '<tr><td colspan="4" style="text-align: center; color: #999;">No records yet</td></tr>') + """
-      </table>
-    </div>
-
-    <div class="card">
-      <h3>Setup Instructions</h3>
-      <p><b>1. Configure your ZKTeco device:</b></p>
-      <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px;">Server: """ + request.host + """
-Path: /iclock/cdata</pre>
-
-      <p><b>2. What happens automatically:</b></p>
-      <ul>
-        <li>✓ Device connects and sends initialization request</li>
-        <li>✓ Server requests FULL data re-sync (all employees + attendance)</li>
-        <li>✓ All data stored in SQLite database (push.db)</li>
-        <li>✓ Real-time updates on this dashboard</li>
-      </ul>
-
-      <p><b>3. View all data:</b></p>
-      <ul>
-        <li><a href="/devices">/devices</a> - All connected machines</li>
-        <li><a href="/users">/users</a> - All employees</li>
-        <li><a href="/attendance">/attendance</a> - All attendance records</li>
-        <li><a href="/api/stats">/api/stats</a> - JSON statistics</li>
-        <li><a href="/admin/devices" style="color: #dc3545; font-weight: bold;">⚙️ Admin: Force Data Sync</a></li>
-      </ul>
-    </div>
-
-    """ + ('<div class="warning"><b>⏳ Waiting for device connection...</b><br>No devices connected yet. Make sure your ZKTeco device is configured to push to this server.</div>' if devices_cnt == 0 else f'<div class="success"><b>✓ {devices_cnt} device(s) connected!</b> Database: {devices_cnt} devices, {users_cnt} employees, {attlog_cnt} records</div>') + """
-    """)
-
-    return html
 
 @app.route("/devices")
 def devices():
-    """All devices"""
     conn = db()
     rows = conn.execute("SELECT * FROM devices ORDER BY last_seen_utc DESC").fetchall()
     conn.close()
+    items = "".join(
+        f"<div class='card'><b>{r['sn']}</b> — IP: {r['last_ip'] or '-'} "
+        f"| Last seen: <span class='muted'>{r['last_seen_utc']}</span> "
+        f"| Ver: {r['pushver'] or '-'}</div>"
+        for r in rows
+    ) or "<p style='color:#999'>No devices connected yet</p>"
+    return _BASE.format(body=f"<h2>Devices ({len(rows)})</h2>{items}")
 
-    html = BASE_HTML.replace("{CONTENT}", f"""
-    <h2>Connected Devices ({len(rows)})</h2>
-    {''.join([f'<div class="card"><div><b>SN:</b> <a href="/devices/{r["sn"]}">{r["sn"]}</a></div><div class="muted">Last seen: {r["last_seen_utc"]} | IP: {r["last_ip"] or "-"}</div><div class="muted">Version: {r["pushver"] or "-"} | Language: {r["language"] or "-"}</div></div>' for r in rows]) if rows else '<p style="color: #999;">No devices connected yet</p>'}
-    """)
-    return html
-
-@app.route("/devices/<sn>")
-def device_detail(sn: str):
-    """Device details"""
-    conn = db()
-    d = conn.execute("SELECT * FROM devices WHERE sn=?", (sn,)).fetchone()
-    if not d:
-        conn.close()
-        return "Device not found", 404
-    users_cnt = conn.execute("SELECT COUNT(*) c FROM users WHERE sn=?", (sn,)).fetchone()["c"]
-    att_cnt = conn.execute("SELECT COUNT(*) c FROM attlog WHERE sn=?", (sn,)).fetchone()["c"]
-    conn.close()
-
-    html = BASE_HTML.replace("{CONTENT}", f"""
-    <h2>Device: {d['sn']}</h2>
-    <div class="card">
-      <div><b>Last Seen:</b> {d['last_seen_utc']}</div>
-      <div><b>IP:</b> {d['last_ip']}</div>
-      <div><b>Push Version:</b> {d['pushver'] or '-'}</div>
-      <div><b>Language:</b> {d['language'] or '-'}</div>
-      <div style="margin-top: 15px;">
-        <a href="/users?sn={d['sn']}">Employees ({users_cnt})</a> |
-        <a href="/attendance?sn={d['sn']}">Attendance ({att_cnt})</a>
-      </div>
-    </div>
-    """)
-    return html
 
 @app.route("/users")
 def users():
-    """All employees"""
     sn = request.args.get("sn", "").strip()
-    q = request.args.get("q", "").strip()
-
+    q  = request.args.get("q",  "").strip()
     conn = db()
-    params: List[str] = []
-    where = []
-
+    params: List = []
+    where: List[str] = []
     if sn:
-        where.append("sn=?")
-        params.append(sn)
+        where.append("sn=?"); params.append(sn)
     if q:
-        where.append("(pin LIKE ? OR name LIKE ? OR card LIKE ?)")
-        params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
-
-    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
-    rows = conn.execute(f"""
-      SELECT sn, pin, name, card, grp, updated_at_utc
-      FROM users
-      {where_sql}
-      ORDER BY sn, CAST(pin AS INTEGER)
-      LIMIT 5000
-    """, params).fetchall()
+        where.append("(pin LIKE ? OR name LIKE ?)"); params.extend([f"%{q}%", f"%{q}%"])
+    w = ("WHERE " + " AND ".join(where)) if where else ""
+    rows = conn.execute(
+        f"SELECT sn, pin, name, card, updated_at_utc FROM users {w} "
+        f"ORDER BY sn, CAST(pin AS INTEGER) LIMIT 5000", params
+    ).fetchall()
     conn.close()
+    trs = "".join(
+        f"<tr><td>{r['sn']}</td><td>{r['pin']}</td><td>{r['name'] or '-'}</td>"
+        f"<td>{r['card'] or '-'}</td><td class='muted'>{r['updated_at_utc']}</td></tr>"
+        for r in rows
+    ) or "<tr><td colspan=5 style='text-align:center;color:#999'>No users yet</td></tr>"
+    body = (
+        f"<h2>Users ({len(rows)})</h2>"
+        f"<form method='get'><input name='sn' value='{sn}' placeholder='Filter by device SN'> "
+        f"<input name='q' value='{q}' placeholder='Search PIN/Name'> "
+        f"<button type='submit'>Search</button></form>"
+        f"<table><tr><th>Device</th><th>PIN</th><th>Name</th><th>Card</th><th>Updated</th></tr>"
+        f"{trs}</table>"
+    )
+    return _BASE.format(body=body)
 
-    table_html = '<table><tr><th>Device</th><th>PIN</th><th>Name</th><th>Card ID</th><th>Group</th><th>Updated</th></tr>'
-    for r in rows:
-        table_html += f'<tr><td><a href="/devices/{r["sn"]}">{r["sn"]}</a></td><td>{r["pin"]}</td><td>{r["name"]}</td><td>{r["card"]}</td><td>{r["grp"]}</td><td class="muted">{r["updated_at_utc"]}</td></tr>'
-    table_html += '</table>'
-
-    html = BASE_HTML.replace("{CONTENT}", f"""
-    <h2>Employees ({len(rows)})</h2>
-    <form method="get" style="margin: 15px 0;">
-      <input name="sn" value="{sn}" placeholder="Filter by device SN">
-      <input name="q" value="{q}" placeholder="Search PIN/Name/Card">
-      <button type="submit">Search</button>
-    </form>
-    {table_html}
-    """)
-    return html
 
 @app.route("/attendance")
 def attendance():
-    """All attendance records"""
-    sn = request.args.get("sn", "").strip()
+    sn  = request.args.get("sn",  "").strip()
     pin = request.args.get("pin", "").strip()
-
     conn = db()
-    params: List[str] = []
-    where = []
-
+    params: List = []
+    where: List[str] = []
     if sn:
-        where.append("a.sn=?")
-        params.append(sn)
+        where.append("a.sn=?"); params.append(sn)
     if pin:
-        where.append("a.pin=?")
-        params.append(pin)
-
-    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
-    rows = conn.execute(f"""
-      SELECT a.sn, a.pin, u.name as uname, a.time, a.status, a.verify, a.workcode, a.received_at_utc
-      FROM attlog a
-      LEFT JOIN users u ON u.sn=a.sn AND u.pin=a.pin
-      {where_sql}
-      ORDER BY a.id DESC
-      LIMIT 5000
-    """, params).fetchall()
+        where.append("a.pin=?"); params.append(pin)
+    w = ("WHERE " + " AND ".join(where)) if where else ""
+    rows = conn.execute(
+        f"SELECT a.sn, a.pin, u.name, a.time, a.status FROM attlog a "
+        f"LEFT JOIN users u ON u.sn=a.sn AND u.pin=a.pin {w} ORDER BY a.id DESC LIMIT 5000",
+        params
+    ).fetchall()
     conn.close()
-
-    table_html = '<table><tr><th>Device</th><th>PIN</th><th>Employee</th><th>Time</th><th>Status</th><th>Verify</th><th>Workcode</th><th>Received</th></tr>'
-    for r in rows:
-        table_html += f'<tr><td><a href="/devices/{r["sn"]}">{r["sn"]}</a></td><td>{r["pin"]}</td><td>{r["uname"] or "-"}</td><td>{r["time"]}</td><td><b>{r["status"]}</b></td><td>{r["verify"]}</td><td>{r["workcode"]}</td><td class="muted">{r["received_at_utc"]}</td></tr>'
-    table_html += '</table>'
-
-    html = BASE_HTML.replace("{CONTENT}", f"""
-    <h2>Attendance Records ({len(rows)})</h2>
-    <form method="get" style="margin: 15px 0;">
-      <input name="sn" value="{sn}" placeholder="Filter by device SN">
-      <input name="pin" value="{pin}" placeholder="Filter by PIN">
-      <button type="submit">Filter</button>
-    </form>
-    {table_html}
-    """)
-    return html
+    trs = "".join(
+        f"<tr><td>{r['sn']}</td><td>{r['pin']}</td><td>{r['name'] or '-'}</td>"
+        f"<td>{r['time']}</td><td><b>{r['status']}</b></td></tr>"
+        for r in rows
+    ) or "<tr><td colspan=5 style='text-align:center;color:#999'>No records yet</td></tr>"
+    body = (
+        f"<h2>Attendance ({len(rows)})</h2>"
+        f"<form method='get'><input name='sn' value='{sn}' placeholder='Device SN'> "
+        f"<input name='pin' value='{pin}' placeholder='PIN'> "
+        f"<button type='submit'>Filter</button></form>"
+        f"<table><tr><th>Device</th><th>PIN</th><th>Name</th><th>Time</th><th>Status</th></tr>"
+        f"{trs}</table>"
+    )
+    return _BASE.format(body=body)
 
 # ============================================================================
 # MAIN
 # ============================================================================
 
-
-def prepare_server(interactive: bool) -> None:
-    """
-    Common startup: make sure DB + optional Postgres settings are ready,
-    then initialize SQLite and perform one-time sync to Postgres.
-    """
-    ensure_db_settings(interactive=interactive)
-    init_db()
-    sync_sqlite_attendance_to_postgres()
-
-
-def _run_flask() -> None:
-    app.run(host=APP_HOST, port=APP_PORT, debug=False, use_reloader=False)
-
-def _run_with_tray() -> None:
-    """Run server with system tray icon; no console output."""
-    global _quiet
-    try:
-        import pystray
-        from PIL import Image
-    except ImportError:
-        print("Tray mode requires: pip install pystray Pillow")
-        print("Running without tray...")
-        prepare_server(interactive=True)
-        _run_flask()
-        return
-
-    _quiet = True
-    sys.stdout = _QuietWriter()
-    sys.stderr = _QuietWriter()
-
-    prepare_server(interactive=True)
-
-    dashboard_url = f"http://localhost:{APP_PORT}/"
-    icon_size = 64
-    img = Image.new("RGB", (icon_size, icon_size), color=(56, 142, 60))
-    pixels = img.load()
-    for y in range(icon_size):
-        for x in range(icon_size):
-            if 8 <= x < 56 and 8 <= y < 56:
-                pixels[x, y] = (76, 175, 80)
-            if 20 <= x < 44 and 20 <= y < 44:
-                pixels[x, y] = (129, 199, 132)
-
-    server_thread = threading.Thread(target=_run_flask, daemon=True)
-    server_thread.start()
-
-    def open_dashboard(_icon: object, _item: object) -> None:
-        webbrowser.open(dashboard_url)
-
-    def quit_app(icon: object) -> None:
-        icon.stop()
-
-    def show_device_status(_icon: object, _item: object) -> None:
-        import tkinter as tk
-        from tkinter import ttk
-
-        root = tk.Tk()
-        root.title(_("device_status_title", "ZKTeco PUSH - Device status"))
-        root.minsize(560, 260)
-        root.geometry("640x320")
-        root.resizable(True, True)
-
-        # Ensure close button and Alt+F4 properly quit
-        def on_closing() -> None:
-            root.quit()
-            root.destroy()
-
-        root.protocol("WM_DELETE_WINDOW", on_closing)
-
-        # Style for a cleaner look
-        style = ttk.Style(root)
-        try:
-            style.theme_use("vista" if sys.platform == "win32" else "clam")
-        except tk.TclError:
-            pass
-        style.configure("Title.TLabel", font=("Segoe UI", 11, "bold"))
-        style.configure("TFrame", background="#f0f0f0")
-        style.configure("Card.TFrame", background="#fff", relief="flat")
-        root.configure(bg="#f0f0f0")
-
-        # Header
-        header = ttk.Frame(root, padding=(12, 10, 12, 6))
-        header.pack(fill=tk.X)
-        ttk.Label(
-            header,
-            text=_("device_status_header", "Device status"),
-            style="Title.TLabel",
-        ).pack(anchor=tk.W)
-        ttk.Label(
-            header,
-            text=_(
-                "server_running_on_port",
-                f"Server running on port {APP_PORT}",
-            ).format(port=APP_PORT),
-            font=("Segoe UI", 9),
-        ).pack(anchor=tk.W)
-
-        # Table in a framed area
-        table_frame = ttk.Frame(root, padding=(12, 0, 12, 8))
-        table_frame.pack(fill=tk.BOTH, expand=True)
-
-        tree = ttk.Treeview(
-            table_frame,
-            columns=("sn", "last_seen", "last_ip", "pushver", "records"),
-            show="headings",
-            height=8,
-            selectmode="browse",
-        )
-        tree.heading("sn", text="Device SN")
-        tree.heading("last_seen", text="Last seen (UTC)")
-        tree.heading("last_ip", text="Last IP")
-        tree.heading("pushver", text="Push ver")
-        tree.heading("records", text="Records")
-        tree.column("sn", width=140)
-        tree.column("last_seen", width=170)
-        tree.column("last_ip", width=120)
-        tree.column("pushver", width=80)
-        tree.column("records", width=70)
-        scroll = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=tree.yview)
-        tree.configure(yscrollcommand=scroll.set)
-        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-
-        def refresh_table() -> None:
-            for c in tree.get_children():
-                tree.delete(c)
-            for row in get_device_status():
-                tree.insert("", tk.END, values=(
-                    row["sn"],
-                    row["last_seen"],
-                    row["last_ip"],
-                    row["pushver"],
-                    row["records"],
-                ))
-
-        # Buttons
-        btn_frame = ttk.Frame(root, padding=(12, 4, 12, 12))
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(
-            btn_frame,
-            text=_("refresh", "Refresh"),
-            command=refresh_table,
-        ).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(
-            btn_frame,
-            text=_("open_dashboard", "Open Dashboard"),
-            command=lambda: webbrowser.open(dashboard_url),
-        ).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(
-            btn_frame,
-            text=_("close", "Close"),
-            command=on_closing,
-        ).pack(side=tk.RIGHT)
-
-        refresh_table()
-        root.mainloop()
-
-    menu = pystray.Menu(
-        pystray.MenuItem("Device status", show_device_status, default=True),
-        pystray.MenuItem("Open Dashboard", open_dashboard),
-        pystray.MenuItem("Quit", quit_app),
-    )
-    tray_icon = pystray.Icon(
-        "zk_push",
-        img,
-        f"ZKTeco PUSH Server - Running on port {APP_PORT}",
-        menu,
-    )
-    tray_icon.run()
-
 if __name__ == "__main__":
-    if "--service" in sys.argv or "-s" in sys.argv:
-        # Service mode: no GUI wizard
-        prepare_server(interactive=False)
-        _run_flask()
-    else:
-        # Default: run with tray. Use --console or -c for console mode.
-        use_console = "--console" in sys.argv or "-c" in sys.argv
-        if use_console:
-            prepare_server(interactive=True)
-            print(f"""
-╔════════════════════════════════════════════════════════════╗
-║  ZKTeco PUSH Server - Attendance Management System         ║
-║  Port: {APP_PORT}                                                ║
-║  Database: {DB_PATH}                                          ║
-║  Dashboard: http://localhost:{APP_PORT}/                     ║
-║  Status: Listening for device connections...                ║
-╚════════════════════════════════════════════════════════════╝
-        """)
-            _run_flask()
-        else:
-            _run_with_tray()
+    ensure_db_settings()
+    init_db()
+    sync_attlogs_to_postgres()
+    sync_users_to_postgres()
+    print(f"""
+╔══════════════════════════════════════════════════════╗
+║  ZKTeco PUSH Server                                  ║
+║  Port    : {APP_PORT}                                       ║
+║  Database: {DB_PATH:<42}║
+║  Dashboard: http://localhost:{APP_PORT}/                   ║
+║  Waiting for device connections...                   ║
+╚══════════════════════════════════════════════════════╝
+    """)
+    app.run(host=APP_HOST, port=APP_PORT, debug=False, use_reloader=False)
