@@ -254,6 +254,15 @@ router.get("/logs", async (req, res) => {
 
     let filtered = all;
     if (deviceId) filtered = filtered.filter(r => r.log.deviceId === Number(deviceId));
+    if (startDate) {
+      const start = new Date(String(startDate));
+      filtered = filtered.filter(r => r.log.punchTime >= start);
+    }
+    if (endDate) {
+      const end = new Date(String(endDate));
+      end.setDate(end.getDate() + 1);
+      filtered = filtered.filter(r => r.log.punchTime < end);
+    }
 
     const total = filtered.length;
     const p = Number(page), l = 50;

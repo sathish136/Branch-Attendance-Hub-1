@@ -407,40 +407,45 @@ function useSplitReport(startDate: string, endDate: string) {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const allLogs: PunchLog[] = [];
-      let page = 1;
-      while (true) {
-        const params = new URLSearchParams({ startDate, endDate, page: String(page) });
-        const res = await fetch(apiUrl(`/biometric/logs?${params}`));
-        if (!res.ok) break;
-        const json = await res.json();
-        const batch: PunchLog[] = json.logs || [];
-        allLogs.push(...batch);
-        if (allLogs.length >= (json.total ?? batch.length) || batch.length === 0) break;
-        page++;
+      try {
+        const allLogs: PunchLog[] = [];
+        let page = 1;
+        while (true) {
+          const params = new URLSearchParams({ startDate, endDate, page: String(page) });
+          const res = await fetch(apiUrl(`/biometric/logs?${params}`));
+          if (!res.ok) break;
+          const json = await res.json();
+          const batch: PunchLog[] = json.logs || [];
+          allLogs.push(...batch);
+          if (allLogs.length >= (json.total ?? batch.length) || batch.length === 0) break;
+          page++;
+        }
+        if (cancelled) return;
+
+        const groups: Record<string, PunchLog[]> = {};
+        for (const log of allLogs) {
+          if (log.punchType === "unknown") continue;
+          const dateKey = new Date(log.punchTime).toISOString().split("T")[0];
+          const gKey = `${log.biometricId}::${dateKey}`;
+          if (!groups[gKey]) groups[gKey] = [];
+          groups[gKey].push(log);
+        }
+
+        const result: EmployeeDayRow[] = Object.entries(groups).map(([key, punches]) => {
+          const sessions = buildSessions(punches);
+          const totalHrs = sessions.reduce((s, p) => s + (p.durationHrs ?? 0), 0);
+          const sample = punches[0];
+          const dateKey = new Date(sample.punchTime).toISOString().split("T")[0];
+          return { key, employeeName: sample.employeeName, biometricId: sample.biometricId, date: dateKey, sessions, totalHrs };
+        });
+
+        result.sort((a, b) => a.date.localeCompare(b.date) || a.employeeName.localeCompare(b.employeeName));
+        if (!cancelled) setRows(result);
+      } catch (err) {
+        console.error("Split report load error:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      if (cancelled) return;
-
-      const groups: Record<string, PunchLog[]> = {};
-      for (const log of allLogs) {
-        if (log.punchType === "unknown") continue;
-        const dateKey = new Date(log.punchTime).toISOString().split("T")[0];
-        const gKey = `${log.biometricId}::${dateKey}`;
-        if (!groups[gKey]) groups[gKey] = [];
-        groups[gKey].push(log);
-      }
-
-      const result: EmployeeDayRow[] = Object.entries(groups).map(([key, punches]) => {
-        const sessions = buildSessions(punches);
-        const totalHrs = sessions.reduce((s, p) => s + (p.durationHrs ?? 0), 0);
-        const sample = punches[0];
-        const dateKey = new Date(sample.punchTime).toISOString().split("T")[0];
-        return { key, employeeName: sample.employeeName, biometricId: sample.biometricId, date: dateKey, sessions, totalHrs };
-      });
-
-      result.sort((a, b) => a.date.localeCompare(b.date) || a.employeeName.localeCompare(b.employeeName));
-      setRows(result);
-      setLoading(false);
     }
     load();
     return () => { cancelled = true; };
