@@ -1,10 +1,13 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useGetAttendanceReport, useGetMonthlyReport, useGetOvertimeReport, useListBranches } from "@workspace/api-client-react";
 import { PageHeader, Card, Input, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { FileDown, Users, Clock, Calendar, FileText, Sheet } from "lucide-react";
+import { Users, Clock, Calendar, FileText, Sheet, AlignLeft } from "lucide-react";
 
-type Tab = "attendance" | "monthly" | "overtime";
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+function apiUrl(path: string) { return `${BASE}/api${path}`; }
+
+type Tab = "attendance" | "monthly" | "overtime" | "split";
 
 const STATUS_COLORS: Record<string, string> = {
   present: "bg-green-100 text-green-700",
@@ -19,45 +22,31 @@ function getMonthName(m: number) {
   return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1];
 }
 
-function ExportDropdown() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+function fmt(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+}
 
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
+function diffHrs(a: string, b: string) {
+  return ((new Date(b).getTime() - new Date(a).getTime()) / 3_600_000);
+}
 
+function ExportButtons() {
   return (
-    <div ref={ref} className="relative">
+    <div className="flex items-center gap-2 ml-auto self-end">
       <button
-        onClick={() => setOpen(o => !o)}
-        title="Export"
-        className="flex items-center justify-center w-9 h-9 border border-border rounded-lg bg-background hover:bg-muted transition-colors"
+        onClick={() => {}}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
       >
-        <FileDown className="w-4 h-4 text-muted-foreground" />
+        <FileText className="w-3.5 h-3.5" />
+        PDF
       </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-40 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
-          <button
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 w-full px-3 py-2.5 text-xs font-medium hover:bg-muted transition-colors"
-          >
-            <FileText className="w-3.5 h-3.5 text-red-500" />
-            Export PDF
-          </button>
-          <button
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 w-full px-3 py-2.5 text-xs font-medium hover:bg-muted transition-colors border-t border-border"
-          >
-            <Sheet className="w-3.5 h-3.5 text-green-600" />
-            Export Excel
-          </button>
-        </div>
-      )}
+      <button
+        onClick={() => {}}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg transition-colors"
+      >
+        <Sheet className="w-3.5 h-3.5" />
+        Excel
+      </button>
     </div>
   );
 }
@@ -67,18 +56,19 @@ export default function Reports() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Reports" description="Detailed attendance, monthly, and overtime reports for all branches." />
-      <div className="flex gap-1 border-b border-border">
+      <PageHeader title="Reports" description="Detailed attendance, monthly, overtime, and split punch reports." />
+      <div className="flex gap-1 border-b border-border overflow-x-auto">
         {([
           { id: "attendance", label: "Attendance Report", icon: Users },
-          { id: "monthly", label: "Monthly Report", icon: Calendar },
-          { id: "overtime", label: "Overtime Report", icon: Clock },
+          { id: "monthly",    label: "Monthly Report",    icon: Calendar },
+          { id: "overtime",   label: "Overtime Report",   icon: Clock },
+          { id: "split",      label: "Split Report",      icon: AlignLeft },
         ] as const).map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
             className={cn(
-              "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors",
+              "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors",
               tab === id
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -91,39 +81,33 @@ export default function Reports() {
       </div>
 
       {tab === "attendance" && <AttendanceReport />}
-      {tab === "monthly" && <MonthlyReport />}
-      {tab === "overtime" && <OvertimeReport />}
+      {tab === "monthly"    && <MonthlyReport />}
+      {tab === "overtime"   && <OvertimeReport />}
+      {tab === "split"      && <SplitReport />}
     </div>
   );
 }
 
+/* ── Attendance Report ── */
 function AttendanceReport() {
   const now = new Date();
   const [startDate, setStartDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(now.toISOString().split("T")[0]);
   const [branchId, setBranchId] = useState("");
   const [status, setStatus] = useState("");
-
   const { data: branches } = useListBranches();
   const { data, isLoading } = useGetAttendanceReport({
-    startDate,
-    endDate,
+    startDate, endDate,
     ...(branchId ? { branchId: Number(branchId) } : {}),
-    ...(status ? { status } : {}),
+    ...(status   ? { status }                     : {}),
   });
 
   return (
     <div className="space-y-4">
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <Label className="text-xs">Start Date</Label>
-            <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-          </div>
-          <div>
-            <Label className="text-xs">End Date</Label>
-            <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          </div>
+          <div><Label className="text-xs">Start Date</Label><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
+          <div><Label className="text-xs">End Date</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
           <div>
             <Label className="text-xs">Branch</Label>
             <Select value={branchId} onChange={e => setBranchId(e.target.value)}>
@@ -142,21 +126,19 @@ function AttendanceReport() {
               <option value="leave">Leave</option>
             </Select>
           </div>
-          <div className="ml-auto self-end">
-            <ExportDropdown />
-          </div>
+          <ExportButtons />
         </div>
       </Card>
 
       {data && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
           {[
-            { label: "Present", val: data.summary.present, cls: "text-green-600" },
-            { label: "Absent", val: data.summary.absent, cls: "text-red-600" },
-            { label: "Late", val: data.summary.late, cls: "text-amber-600" },
-            { label: "Half Day", val: data.summary.halfDay, cls: "text-yellow-600" },
-            { label: "Leave", val: data.summary.leave, cls: "text-purple-600" },
-            { label: "Holiday", val: data.summary.holiday, cls: "text-gray-600" },
+            { label: "Present",  val: data.summary.present,  cls: "text-green-600" },
+            { label: "Absent",   val: data.summary.absent,   cls: "text-red-600" },
+            { label: "Late",     val: data.summary.late,     cls: "text-amber-600" },
+            { label: "Half Day", val: data.summary.halfDay,  cls: "text-yellow-600" },
+            { label: "Leave",    val: data.summary.leave,    cls: "text-purple-600" },
+            { label: "Holiday",  val: data.summary.holiday,  cls: "text-gray-600" },
           ].map(({ label, val, cls }) => (
             <Card key={label} className="p-3 text-center">
               <div className={cn("text-2xl font-bold", cls)}>{val}</div>
@@ -167,17 +149,13 @@ function AttendanceReport() {
       )}
 
       <Card className="overflow-hidden">
-        {isLoading ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>
-        ) : (
+        {isLoading ? <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-muted/50">
-                <tr>
-                  {["Date","Emp ID","Employee","Branch","Designation","Status","In Time","Out Time","Total Hrs","OT Hrs"].map(h => (
-                    <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
+                <tr>{["Date","Emp ID","Employee","Branch","Designation","Status","In Time","Out Time","Total Hrs","OT Hrs"].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
+                ))}</tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {(data?.records || []).slice(0, 200).map(r => (
@@ -186,15 +164,15 @@ function AttendanceReport() {
                     <td className="px-3 py-2 font-mono text-muted-foreground">{r.employeeCode}</td>
                     <td className="px-3 py-2 font-medium whitespace-nowrap">{r.employeeName}</td>
                     <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{r.branchName}</td>
-                    <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">—</td>
+                    <td className="px-3 py-2 text-muted-foreground">—</td>
                     <td className="px-3 py-2">
                       <span className={cn("px-2 py-0.5 rounded text-xs font-medium uppercase", STATUS_COLORS[r.status] || "bg-gray-100")}>
                         {r.status.replace("_", " ")}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-mono">{r.inTime1 ? new Date(r.inTime1).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }) : "—"}</td>
-                    <td className="px-3 py-2 font-mono">{r.outTime1 ? new Date(r.outTime1).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }) : "—"}</td>
-                    <td className="px-3 py-2 font-mono">{r.totalHours != null ? `${r.totalHours.toFixed(1)}h` : "—"}</td>
+                    <td className="px-3 py-2 font-mono">{r.inTime1  ? fmt(r.inTime1)  : "—"}</td>
+                    <td className="px-3 py-2 font-mono">{r.outTime1 ? fmt(r.outTime1) : "—"}</td>
+                    <td className="px-3 py-2 font-mono">{r.totalHours     != null ? `${r.totalHours.toFixed(1)}h`     : "—"}</td>
                     <td className="px-3 py-2 font-mono">{r.overtimeHours != null && r.overtimeHours > 0 ? `${r.overtimeHours.toFixed(1)}h` : "—"}</td>
                   </tr>
                 ))}
@@ -210,6 +188,7 @@ function AttendanceReport() {
   );
 }
 
+/* ── Monthly Report ── */
 function MonthlyReport() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -217,8 +196,7 @@ function MonthlyReport() {
   const [branchId, setBranchId] = useState("");
   const { data: branches } = useListBranches();
   const { data, isLoading } = useGetMonthlyReport({
-    month,
-    year,
+    month, year,
     ...(branchId ? { branchId: Number(branchId) } : {}),
   });
 
@@ -245,9 +223,7 @@ function MonthlyReport() {
               {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
-          <div className="ml-auto self-end">
-            <ExportDropdown />
-          </div>
+          <ExportButtons />
         </div>
       </Card>
 
@@ -260,17 +236,13 @@ function MonthlyReport() {
       )}
 
       <Card className="overflow-hidden">
-        {isLoading ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Generating report...</div>
-        ) : (
+        {isLoading ? <div className="p-8 text-center text-sm text-muted-foreground">Generating report...</div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-muted/50">
-                <tr>
-                  {["Emp ID","Employee","Branch","Designation","Present","Absent","Late","Half Day","Leave","Holiday","Work Hours","OT Hours","Att %"].map(h => (
-                    <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
+                <tr>{["Emp ID","Employee","Branch","Designation","Present","Absent","Late","Half Day","Leave","Holiday","Work Hours","OT Hours","Att %"].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
+                ))}</tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {(data?.employees || []).map(e => (
@@ -307,6 +279,7 @@ function MonthlyReport() {
   );
 }
 
+/* ── Overtime Report ── */
 function OvertimeReport() {
   const now = new Date();
   const [startDate, setStartDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]);
@@ -314,8 +287,7 @@ function OvertimeReport() {
   const [branchId, setBranchId] = useState("");
   const { data: branches } = useListBranches();
   const { data, isLoading } = useGetOvertimeReport({
-    startDate,
-    endDate,
+    startDate, endDate,
     ...(branchId ? { branchId: Number(branchId) } : {}),
   });
 
@@ -323,14 +295,8 @@ function OvertimeReport() {
     <div className="space-y-4">
       <Card className="p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <Label className="text-xs">Start Date</Label>
-            <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-          </div>
-          <div>
-            <Label className="text-xs">End Date</Label>
-            <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-          </div>
+          <div><Label className="text-xs">Start Date</Label><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
+          <div><Label className="text-xs">End Date</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
           <div>
             <Label className="text-xs">Branch</Label>
             <Select value={branchId} onChange={e => setBranchId(e.target.value)}>
@@ -338,9 +304,7 @@ function OvertimeReport() {
               {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
-          <div className="ml-auto self-end">
-            <ExportDropdown />
-          </div>
+          <ExportButtons />
         </div>
       </Card>
 
@@ -352,17 +316,13 @@ function OvertimeReport() {
       )}
 
       <Card className="overflow-hidden">
-        {isLoading ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>
-        ) : (
+        {isLoading ? <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-muted/50">
-                <tr>
-                  {["Emp ID","Employee","Branch","Designation","OT Days","Total OT Hours","Daily Breakdown"].map(h => (
-                    <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
+                <tr>{["Emp ID","Employee","Branch","Designation","OT Days","Total OT Hours","Daily Breakdown"].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
+                ))}</tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {(data?.employees || []).map(e => (
@@ -381,6 +341,192 @@ function OvertimeReport() {
                 ))}
                 {!data?.employees?.length && (
                   <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">No overtime records found for this period.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/* ── Split Report ── */
+type PunchLog = {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  biometricId: string;
+  punchTime: string;
+  punchType: "in" | "out" | "unknown";
+  deviceName: string;
+};
+
+type Session = { inTime: string; outTime: string | null; durationHrs: number | null };
+type EmployeeDayRow = {
+  key: string;
+  employeeName: string;
+  biometricId: string;
+  date: string;
+  sessions: Session[];
+  totalHrs: number;
+};
+
+function buildSessions(punches: PunchLog[]): Session[] {
+  const sorted = [...punches].sort((a, b) => new Date(a.punchTime).getTime() - new Date(b.punchTime).getTime());
+  const sessions: Session[] = [];
+  let pendingIn: string | null = null;
+
+  for (const p of sorted) {
+    if (p.punchType === "in") {
+      if (pendingIn !== null) {
+        sessions.push({ inTime: pendingIn, outTime: null, durationHrs: null });
+      }
+      pendingIn = p.punchTime;
+    } else if (p.punchType === "out") {
+      if (pendingIn !== null) {
+        sessions.push({ inTime: pendingIn, outTime: p.punchTime, durationHrs: diffHrs(pendingIn, p.punchTime) });
+        pendingIn = null;
+      } else {
+        sessions.push({ inTime: p.punchTime, outTime: null, durationHrs: null });
+      }
+    }
+  }
+  if (pendingIn !== null) {
+    sessions.push({ inTime: pendingIn, outTime: null, durationHrs: null });
+  }
+  return sessions;
+}
+
+function useSplitReport(startDate: string, endDate: string) {
+  const [rows, setRows] = useState<EmployeeDayRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!startDate || !endDate) return;
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      const allLogs: PunchLog[] = [];
+      let page = 1;
+      while (true) {
+        const params = new URLSearchParams({ startDate, endDate, page: String(page) });
+        const res = await fetch(apiUrl(`/biometric/logs?${params}`));
+        if (!res.ok) break;
+        const json = await res.json();
+        const batch: PunchLog[] = json.logs || [];
+        allLogs.push(...batch);
+        if (allLogs.length >= (json.total ?? batch.length) || batch.length === 0) break;
+        page++;
+      }
+      if (cancelled) return;
+
+      const groups: Record<string, PunchLog[]> = {};
+      for (const log of allLogs) {
+        if (log.punchType === "unknown") continue;
+        const dateKey = new Date(log.punchTime).toISOString().split("T")[0];
+        const gKey = `${log.biometricId}::${dateKey}`;
+        if (!groups[gKey]) groups[gKey] = [];
+        groups[gKey].push(log);
+      }
+
+      const result: EmployeeDayRow[] = Object.entries(groups).map(([key, punches]) => {
+        const sessions = buildSessions(punches);
+        const totalHrs = sessions.reduce((s, p) => s + (p.durationHrs ?? 0), 0);
+        const sample = punches[0];
+        const dateKey = new Date(sample.punchTime).toISOString().split("T")[0];
+        return { key, employeeName: sample.employeeName, biometricId: sample.biometricId, date: dateKey, sessions, totalHrs };
+      });
+
+      result.sort((a, b) => a.date.localeCompare(b.date) || a.employeeName.localeCompare(b.employeeName));
+      setRows(result);
+      setLoading(false);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [startDate, endDate]);
+
+  return { rows, loading };
+}
+
+function SplitReport() {
+  const now = new Date();
+  const [startDate, setStartDate] = useState(now.toISOString().split("T")[0]);
+  const [endDate, setEndDate] = useState(now.toISOString().split("T")[0]);
+  const { rows, loading } = useSplitReport(startDate, endDate);
+
+  const maxSessions = rows.reduce((m, r) => Math.max(m, r.sessions.length), 0);
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div><Label className="text-xs">Start Date</Label><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
+          <div><Label className="text-xs">End Date</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
+          <ExportButtons />
+        </div>
+      </Card>
+
+      {rows.length > 0 && (
+        <Card className="p-3 flex gap-6 text-sm border-blue-200 bg-blue-50/30">
+          <div><span className="text-muted-foreground">Records: </span><strong>{rows.length}</strong></div>
+          <div><span className="text-muted-foreground">Max Sessions/Day: </span><strong>{maxSessions}</strong></div>
+        </Card>
+      )}
+
+      <Card className="overflow-hidden">
+        {loading ? <div className="p-8 text-center text-sm text-muted-foreground">Loading punch sessions...</div> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">Date</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">Bio ID</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">Employee</th>
+                  {Array.from({ length: maxSessions || 1 }, (_, i) => (
+                    <th key={i} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">
+                      Session {i + 1}
+                    </th>
+                  ))}
+                  <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">Total Hrs</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rows.map(r => (
+                  <tr key={r.key} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-3 py-2 font-mono whitespace-nowrap">{r.date}</td>
+                    <td className="px-3 py-2 font-mono text-muted-foreground">{r.biometricId}</td>
+                    <td className="px-3 py-2 font-medium whitespace-nowrap">{r.employeeName}</td>
+                    {Array.from({ length: maxSessions || 1 }, (_, i) => {
+                      const s = r.sessions[i];
+                      return (
+                        <td key={i} className="px-3 py-2 whitespace-nowrap">
+                          {s ? (
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-green-700 font-mono">{fmt(s.inTime)}</span>
+                              <span className="text-muted-foreground">→</span>
+                              <span className="text-red-600 font-mono">{s.outTime ? fmt(s.outTime) : "—"}</span>
+                              {s.durationHrs != null && (
+                                <span className="ml-1 px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold">
+                                  {s.durationHrs.toFixed(1)}h
+                                </span>
+                              )}
+                            </span>
+                          ) : <span className="text-muted-foreground/40">—</span>}
+                        </td>
+                      );
+                    })}
+                    <td className="px-3 py-2 font-bold text-blue-700 font-mono whitespace-nowrap">
+                      {r.totalHrs > 0 ? `${r.totalHrs.toFixed(1)}h` : "—"}
+                    </td>
+                  </tr>
+                ))}
+                {!rows.length && !loading && (
+                  <tr>
+                    <td colSpan={4 + (maxSessions || 1)} className="text-center py-10 text-muted-foreground">
+                      No punch records found for the selected date range.
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
