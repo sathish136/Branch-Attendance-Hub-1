@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useListBiometricDevices, useCreateBiometricDevice, useUpdateBiometricDevice, useDeleteBiometricDevice, useTestBiometricDevice, useListBranches, useListBiometricLogs } from "@workspace/api-client-react";
 import { PageHeader, Card, Button, Input, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { Plus, Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy } from "lucide-react";
+import { Plus, Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy, Radio } from "lucide-react";
 
 const DEVICE_STATUS: Record<string, { cls: string; icon: React.ElementType }> = {
   online: { cls: "bg-green-100 text-green-700", icon: Wifi },
@@ -85,7 +85,11 @@ function DevicesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 px-3 py-2 rounded-lg text-xs text-green-700">
+          <Radio className="w-3.5 h-3.5 text-green-600 animate-pulse" />
+          <span>ADMS server listening on port <strong>3333</strong> — configure your ZKTeco device to push to this port and devices will appear here automatically.</span>
+        </div>
         <Button onClick={openCreate} className="flex items-center gap-2 text-xs">
           <Plus className="w-4 h-4" />Add Device
         </Button>
@@ -277,12 +281,9 @@ function CopyField({ label, value }: { label: string; value: string }) {
 }
 
 function SetupGuide() {
-  const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-  const apiPort = isLocal ? "3000" : window.location.port || (window.location.protocol === "https:" ? "443" : "80");
-  const apiOrigin = isLocal
-    ? `http://localhost:3000`
-    : window.location.origin;
+  const admsPort = "3333";
   const serverIp = window.location.hostname;
+  const apiOrigin = `${window.location.protocol}//${serverIp}:${admsPort}`;
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -300,7 +301,7 @@ function SetupGuide() {
             <h4 className="font-semibold text-sm mb-2">Step 1: Server URLs to configure in device</h4>
             <div className="space-y-2">
               <CopyField label="ADMS Server Address / Domain" value={serverIp} />
-              <CopyField label="Server Port" value={apiPort} />
+              <CopyField label="ADMS Port (ZK Push)" value={admsPort} />
               <CopyField label="ADMS Endpoint (full URL)" value={`${apiOrigin}/iclock/cdata`} />
             </div>
           </div>
@@ -312,7 +313,7 @@ function SetupGuide() {
                 ["1. Access Device Menu", "Press Menu on the device → Go to Comm. Settings → Cloud Server Settings (ADMS)"],
                 ["2. Enable ADMS", "Set ADMS Enable = Yes / On"],
                 ["3. Server Address", `Enter the server IP or domain: ${serverIp}`],
-                ["4. Server Port", `Set port to ${apiPort}`],
+                ["4. Server Port", `Set port to ${admsPort} (ZK Push / ADMS port)`],
                 ["5. ADMS Upload Interval", "Set to 1–5 minutes (recommended)"],
                 ["6. Enable Push", "Enable Attendance Push, enable Real-time Upload if available"],
                 ["7. Save & Restart", "Save settings and restart the device — it will appear in the Devices tab automatically"],
