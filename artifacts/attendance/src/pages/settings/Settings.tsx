@@ -103,7 +103,10 @@ export default function Settings() {
   const [dbSaved, setDbSaved] = useState(false);
   const [dbCopied, setDbCopied] = useState(false);
   const [dbTesting, setDbTesting] = useState(false);
-  const [dbTestResult, setDbTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [dbTestResult, setDbTestResult] = useState<{ success: boolean; message: string } | null>(() => {
+    const s = localStorage.getItem("db_status");
+    return s ? JSON.parse(s) : null;
+  });
   const [dbSettings, setDbSettings] = useState(() => {
     const saved = localStorage.getItem("db_settings");
     if (saved) return JSON.parse(saved);
@@ -125,7 +128,6 @@ export default function Settings() {
 
   function setDb(k: string, v: string) {
     setDbSettings((s: any) => ({ ...s, [k]: v }));
-    setDbTestResult(null);
   }
   const dbConnStr = `postgresql://${dbSettings.user}:${encodeURIComponent(dbSettings.password)}@${dbSettings.host}:${dbSettings.port}/${dbSettings.database}`;
 
@@ -140,10 +142,22 @@ export default function Settings() {
       });
       const d = await r.json();
       setDbTestResult(d);
+      localStorage.setItem("db_status", JSON.stringify(d));
     } catch {
-      setDbTestResult({ success: false, message: "Could not reach the server." });
+      const d = { success: false, message: "Could not reach the server." };
+      setDbTestResult(d);
+      localStorage.setItem("db_status", JSON.stringify(d));
     }
     setDbTesting(false);
+  }
+
+  function handleSaveDb() {
+    localStorage.setItem("db_settings", JSON.stringify(dbSettings));
+    if (!dbTestResult) {
+      localStorage.setItem("db_status", JSON.stringify({ success: false, message: "Saved — connection not tested yet." }));
+      setDbTestResult({ success: false, message: "Saved — connection not tested yet." });
+    }
+    saveFn(setDbSaved);
   }
 
   const [hrSettings, setHrSettings] = useState({
@@ -745,11 +759,17 @@ export default function Settings() {
               {dbCopied && <p className="text-xs text-green-600 mt-1">Copied to clipboard!</p>}
             </Card>
 
-            <div className="flex justify-end">
-              <Button className="text-xs flex items-center gap-2" onClick={() => {
-                localStorage.setItem("db_settings", JSON.stringify(dbSettings));
-                saveFn(setDbSaved);
-              }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {dbTestResult ? (
+                  dbTestResult.success
+                    ? <span className="flex items-center gap-1.5 text-green-600 font-medium"><CheckCircle2 className="w-3.5 h-3.5" />Connection verified</span>
+                    : <span className="flex items-center gap-1.5 text-amber-600 font-medium"><AlertTriangle className="w-3.5 h-3.5" />{dbTestResult.message}</span>
+                ) : (
+                  <span className="text-muted-foreground">Connection not tested</span>
+                )}
+              </div>
+              <Button className="text-xs flex items-center gap-2" onClick={handleSaveDb}>
                 {dbSaved ? <><Check className="w-3.5 h-3.5 text-green-400" />Saved!</> : "Save Settings"}
               </Button>
             </div>
