@@ -30,10 +30,5 @@
     "customConditions": ["workspace"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
-  "references": [
-    {
-      "path": "../../lib/api-client-react"
-    }
-  ]
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"]
 }
