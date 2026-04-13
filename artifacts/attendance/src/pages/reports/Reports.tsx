@@ -133,7 +133,7 @@ function AttendanceReport() {
             <table className="w-full text-xs">
               <thead className="bg-muted/50">
                 <tr>
-                  {["Date","Emp ID","Employee","Branch","Designation","Status","In Time","Out Time","Total Hrs","OT Hrs","Source"].map(h => (
+                  {["Date","Emp ID","Employee","Branch","Designation","Status","In Time","Out Time","Total Hrs","OT Hrs"].map(h => (
                     <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -151,15 +151,14 @@ function AttendanceReport() {
                         {r.status.replace("_", " ")}
                       </span>
                     </td>
-                    <td className="px-3 py-2 font-mono">{r.inTime1 || "—"}</td>
-                    <td className="px-3 py-2 font-mono">{r.outTime1 || "—"}</td>
+                    <td className="px-3 py-2 font-mono">{r.inTime1 ? new Date(r.inTime1).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }) : "—"}</td>
+                    <td className="px-3 py-2 font-mono">{r.outTime1 ? new Date(r.outTime1).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }) : "—"}</td>
                     <td className="px-3 py-2 font-mono">{r.totalHours != null ? `${r.totalHours.toFixed(1)}h` : "—"}</td>
                     <td className="px-3 py-2 font-mono">{r.overtimeHours != null && r.overtimeHours > 0 ? `${r.overtimeHours.toFixed(1)}h` : "—"}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{r.source}</td>
                   </tr>
                 ))}
                 {!data?.records?.length && (
-                  <tr><td colSpan={11} className="text-center py-8 text-muted-foreground">No records found. Apply filters and click Apply.</td></tr>
+                  <tr><td colSpan={10} className="text-center py-8 text-muted-foreground">No records found. Apply filters and click Apply.</td></tr>
                 )}
               </tbody>
             </table>

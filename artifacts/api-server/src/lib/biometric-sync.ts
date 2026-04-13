@@ -157,18 +157,30 @@ export async function processAttendance(deviceId: number): Promise<{ created: nu
 
     if (!existing) {
       const wh1 = lastPunch ? calcHours(firstPunch, lastPunch) : null;
-      await db.insert(attendanceRecords).values({
-        employeeId: empId,
-        branchId,
-        date: dateStr,
-        status: "present",
-        inTime1: firstPunch,
-        outTime1: lastPunch ?? null,
-        workHours1: wh1,
-        totalHours: wh1,
-        source: "biometric",
-      });
-      created++;
+      try {
+        await db.insert(attendanceRecords).values({
+          employeeId: empId,
+          branchId,
+          date: dateStr,
+          status: "present",
+          inTime1: firstPunch,
+          outTime1: lastPunch ?? null,
+          workHours1: wh1,
+          totalHours: wh1,
+          source: "biometric",
+        });
+        created++;
+      } catch (insertErr: any) {
+        // Unique constraint — record was created by concurrent call, just update it
+        const [dup] = await db.select().from(attendanceRecords)
+          .where(and(eq(attendanceRecords.employeeId, empId), eq(attendanceRecords.date, dateStr)));
+        if (dup) {
+          const outTime = lastPunch && (!dup.outTime1 || new Date(lastPunch) > new Date(dup.outTime1)) ? lastPunch : dup.outTime1;
+          const wh = calcHours(dup.inTime1 ?? firstPunch, outTime ?? null);
+          await db.update(attendanceRecords).set({ outTime1: outTime, workHours1: wh, totalHours: wh, updatedAt: new Date() }).where(eq(attendanceRecords.id, dup.id));
+          updated++;
+        }
+      }
     } else {
       const updates: Record<string, any> = { source: "biometric", status: "present", updatedAt: new Date() };
       if (!existing.inTime1) updates.inTime1 = firstPunch;

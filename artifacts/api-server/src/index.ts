@@ -94,6 +94,46 @@ async function ensureTables() {
       WHERE biometric_id IS NOT NULL;
     `);
 
+    // Deduplicate attendance_records: keep the record with best data (latest out_time) per employee+date
+    await client.query(`
+      DO $$
+      DECLARE
+        dup RECORD;
+      BEGIN
+        FOR dup IN
+          SELECT employee_id, date, MAX(id) AS keep_id
+          FROM attendance_records
+          GROUP BY employee_id, date
+          HAVING COUNT(*) > 1
+        LOOP
+          -- Update keeper with best in/out times from all duplicates
+          UPDATE attendance_records ar
+          SET
+            in_time1 = (
+              SELECT in_time1 FROM attendance_records
+              WHERE employee_id = dup.employee_id AND date = dup.date AND in_time1 IS NOT NULL
+              ORDER BY in_time1 ASC LIMIT 1
+            ),
+            out_time1 = (
+              SELECT out_time1 FROM attendance_records
+              WHERE employee_id = dup.employee_id AND date = dup.date AND out_time1 IS NOT NULL
+              ORDER BY out_time1 DESC LIMIT 1
+            )
+          WHERE ar.id = dup.keep_id;
+
+          -- Delete all other duplicates
+          DELETE FROM attendance_records
+          WHERE employee_id = dup.employee_id AND date = dup.date AND id <> dup.keep_id;
+        END LOOP;
+      END $$;
+    `);
+
+    // Add unique index on (employee_id, date) to prevent future duplicate attendance records
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS attendance_records_emp_date_unique
+      ON attendance_records (employee_id, date);
+    `);
+
     console.log("[DB] Biometric tables ensured.");
   } catch (err) {
     console.error("[DB] Could not ensure biometric tables:", err);
