@@ -1,0 +1,45 @@
+pnpm --parallel --filter @workspace/api-server --filter @workspace/attendance run dev
+
+Scope: 2 of 8 workspace projects
+artifacts/api-server dev$ cross-env NODE_ENV=development tsx ./src/index.ts
+artifacts/attendance dev$ vite --config vite.config.ts --host 0.0.0.0
+artifacts/attendance dev: C:\Users\IT\Desktop\Branch-Attendance-Hub\node_modules\.pnpm\rollup@4.60.1\node_modules\rollup\dist\native.js:115
+artifacts/attendance dev:               throw new Error(
+artifacts/attendance dev:                     ^
+artifacts/attendance dev: Error: Cannot find module @rollup/rollup-win32-x64-msvc. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.
+artifacts/attendance dev:     at requireWithFriendlyError (C:\Users\IT\Desktop\Branch-Attendance-Hub\node_modules\.pnpm\rollup@4.60.1\node_modules\rollup\dist\native.js:115:9)
+artifacts/attendance dev:     at Object.<anonymous> (C:\Users\IT\Desktop\Branch-Attendance-Hub\node_modules\.pnpm\rollup@4.60.1\node_modules\rollup\dist\native.js:124:76)
+artifacts/attendance dev:     at Module._compile (node:internal/modules/cjs/loader:1811:14)
+artifacts/attendance dev:     at Object..js (node:internal/modules/cjs/loader:1942:10)
+artifacts/attendance dev:     at Module.load (node:internal/modules/cjs/loader:1532:32)
+artifacts/attendance dev:     at Module._load (node:internal/modules/cjs/loader:1334:12)
+artifacts/attendance dev:     at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+artifacts/attendance dev:     at loadCJSModuleWithModuleLoad (node:internal/modules/esm/translators:327:3)
+artifacts/attendance dev:     at ModuleWrap.<anonymous> (node:internal/modules/esm/translators:232:7)
+artifacts/attendance dev:     at ModuleJob.run (node:internal/modules/esm/module_job:430:25) {
+artifacts/attendance dev:   [cause]: Error: Cannot find module '@rollup/rollup-win32-x64-msvc'
+artifacts/attendance dev:   Require stack:
+artifacts/attendance dev:   - C:\Users\IT\Desktop\Branch-Attendance-Hub\node_modules\.pnpm\rollup@4.60.1\node_modules\rollup\dist\native.js
+artifacts/attendance dev:       at Module._resolveFilename (node:internal/modules/cjs/loader:1455:15)
+artifacts/attendance dev:       at defaultResolveImpl (node:internal/modules/cjs/loader:1065:19)
+artifacts/attendance dev:       at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1070:22)
+artifacts/attendance dev:       at Module._load (node:internal/modules/cjs/loader:1241:25)
+artifacts/attendance dev:       at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+artifacts/attendance dev:       at Module.require (node:internal/modules/cjs/loader:1555:12)
+artifacts/attendance dev:       at require (node:internal/modules/helpers:152:16)
+artifacts/attendance dev:       at requireWithFriendlyError (C:\Users\IT\Desktop\Branch-Attendance-Hub\node_modules\.pnpm\rollup@4.60.1\node_modules\rollup\dist\native.js:97:10)
+artifacts/attendance dev:       at Object.<anonymous> (C:\Users\IT\Desktop\Branch-Attendance-Hub\node_modules\.pnpm\rollup@4.60.1\node_modules\rollup\dist\native.js:124:76)
+artifacts/attendance dev:       at Module._compile (node:internal/modules/cjs/loader:1811:14) {
+artifacts/attendance dev:     code: 'MODULE_NOT_FOUND',
+artifacts/attendance dev:     requireStack: [
+artifacts/attendance dev:       'C:\\Users\\IT\\Desktop\\Branch-Attendance-Hub\\node_modules\\.pnpm\\rollup@4.60.1\\node_modules\\rollup\\dist\\native.js'
+artifacts/attendance dev:     ]
+artifacts/attendance dev:   }
+artifacts/attendance dev: }
+artifacts/attendance dev: Node.js v25.6.1
+artifacts/attendance dev: Failed
+C:\Users\IT\Desktop\Branch-Attendance-Hub\artifacts\attendance:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/attendance@0.0.0 dev: `vite --config vite.config.ts --host 0.0.0.0`
+Exit status 1
+ ELIFECYCLE  Command failed with exit code 1.
+PS C:\Users\IT\Desktop\Branch-Attendance-Hub> 
