@@ -41,44 +41,153 @@ export default function Biometric() {
   );
 }
 
-interface BranchForm { branchId: number; name: string; }
+interface DeviceForm {
+  name: string;
+  model: string;
+  ipAddress: string;
+  port: number;
+  branchId: number;
+  status: string;
+}
 
-function DevicesTab() {
-  const { data: devices, isLoading, refetch } = useListBiometricDevices();
-  const { data: branches } = useListBranches();
+function EditDeviceModal({ device, branches, onClose, onSaved }: {
+  device: any;
+  branches: any[];
+  onClose: () => void;
+  onSaved: (msg: string) => void;
+}) {
   const update = useUpdateBiometricDevice();
-  const remove = useDeleteBiometricDevice();
+  const [form, setForm] = useState<DeviceForm>({
+    name:      device.name || "",
+    model:     device.model || "ZKTeco",
+    ipAddress: device.ipAddress || "",
+    port:      device.port || 4370,
+    branchId:  device.branchId || 0,
+    status:    device.status || "offline",
+  });
 
-  const [editId, setEditId] = useState<number | null>(null);
-  const [branchForm, setBranchForm] = useState<BranchForm>({ branchId: 0, name: "" });
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-
-  function openEdit(d: any) {
-    setBranchForm({ branchId: d.branchId || 0, name: d.name });
-    setEditId(d.id);
-    setSuccessMsg(null);
+  function set(field: keyof DeviceForm, value: any) {
+    setForm(f => ({ ...f, [field]: value }));
   }
+
   function handleSave() {
-    if (!editId) return;
     update.mutate(
-      { id: editId, data: { branchId: branchForm.branchId || null, name: branchForm.name } },
+      { id: device.id, data: { ...form, branchId: form.branchId || null } },
       {
         onSuccess: (result: any) => {
-          setEditId(null);
           const created = result?.employeesCreated ?? 0;
-          if (created > 0) {
-            setSuccessMsg(`Branch assigned. ${created} employee${created !== 1 ? "s" : ""} automatically created from device logs.`);
-          } else if (branchForm.branchId) {
-            setSuccessMsg("Branch assigned. No new employees found in device logs — they will be created automatically when attendance data syncs.");
-          }
-          setTimeout(() => setSuccessMsg(null), 8000);
-        }
+          onSaved(
+            created > 0
+              ? `Device saved. ${created} employee${created !== 1 ? "s" : ""} automatically created from device logs.`
+              : "Device updated successfully."
+          );
+          onClose();
+        },
       }
     );
   }
 
   return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-background rounded-xl shadow-xl border border-border w-full max-w-md mx-4 p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-base">Edit Device</h3>
+          <button onClick={onClose} className="p-1 hover:bg-muted rounded text-muted-foreground text-lg leading-none">×</button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <Label className="text-xs">Device Name</Label>
+            <input
+              className="w-full mt-1 px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+              value={form.name}
+              onChange={e => set("name", e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs">Model</Label>
+            <input
+              className="w-full mt-1 px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+              value={form.model}
+              onChange={e => set("model", e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs">Status</Label>
+            <Select value={form.status} onChange={e => set("status", e.target.value)} className="mt-1">
+              <option value="online">Online</option>
+              <option value="offline">Offline</option>
+              <option value="error">Error</option>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-xs">IP Address</Label>
+            <input
+              className="w-full mt-1 px-3 py-2 text-sm border border-border rounded-lg bg-background font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+              value={form.ipAddress}
+              onChange={e => set("ipAddress", e.target.value)}
+              placeholder="192.168.1.100"
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs">Port</Label>
+            <input
+              type="number"
+              className="w-full mt-1 px-3 py-2 text-sm border border-border rounded-lg bg-background font-mono focus:outline-none focus:ring-2 focus:ring-primary/30"
+              value={form.port}
+              onChange={e => set("port", Number(e.target.value))}
+            />
+          </div>
+
+          <div className="col-span-2">
+            <Label className="text-xs">Branch</Label>
+            <Select value={form.branchId || ""} onChange={e => set("branchId", Number(e.target.value))} className="mt-1">
+              <option value="">— Unassigned —</option>
+              {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <Button onClick={handleSave} disabled={update.isPending} className="flex-1">
+            {update.isPending ? "Saving..." : "Save Changes"}
+          </Button>
+          <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DevicesTab() {
+  const { data: devices, isLoading, refetch } = useListBiometricDevices();
+  const { data: branches } = useListBranches();
+  const remove = useDeleteBiometricDevice();
+
+  const [editDevice, setEditDevice] = useState<any | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  function handleSaved(msg: string) {
+    setSuccessMsg(msg);
+    refetch();
+    setTimeout(() => setSuccessMsg(null), 8000);
+  }
+
+  return (
     <div className="space-y-4">
+      {editDevice && (
+        <EditDeviceModal
+          device={editDevice}
+          branches={branches || []}
+          onClose={() => setEditDevice(null)}
+          onSaved={handleSaved}
+        />
+      )}
+
       <div className="flex items-center gap-3 bg-green-50 border border-green-200 px-3 py-2 rounded-lg text-xs text-green-700">
         <Radio className="w-3.5 h-3.5 text-green-600 shrink-0 animate-pulse" />
         <span>
@@ -94,25 +203,6 @@ function DevicesTab() {
           <span className="text-emerald-600 font-bold mt-0.5">✓</span>
           <span>{successMsg}</span>
         </div>
-      )}
-
-      {editId && (
-        <Card className="p-4 border-primary/30 bg-primary/5">
-          <h3 className="font-semibold text-sm mb-3">Assign Branch — {branchForm.name}</h3>
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <Label className="text-xs">Branch</Label>
-              <Select value={branchForm.branchId || ""} onChange={e => setBranchForm(f => ({ ...f, branchId: Number(e.target.value) }))}>
-                <option value="">Select Branch</option>
-                {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </Select>
-            </div>
-            <Button onClick={handleSave} disabled={update.isPending} className="text-xs">
-              {update.isPending ? "Saving..." : "Save"}
-            </Button>
-            <Button variant="outline" onClick={() => setEditId(null)} className="text-xs">Cancel</Button>
-          </div>
-        </Card>
       )}
 
       <Card className="overflow-hidden">
@@ -140,7 +230,7 @@ function DevicesTab() {
                       <td className="px-3 py-2 whitespace-nowrap">
                         {d.branchName
                           ? <span className="text-muted-foreground">{d.branchName}</span>
-                          : <button onClick={() => openEdit(d)} className="text-amber-600 font-medium text-xs bg-amber-50 px-2 py-0.5 rounded border border-amber-200 hover:bg-amber-100 transition-colors">
+                          : <button onClick={() => setEditDevice(d)} className="text-amber-600 font-medium text-xs bg-amber-50 px-2 py-0.5 rounded border border-amber-200 hover:bg-amber-100 transition-colors">
                               ⚠ Assign Branch
                             </button>
                         }
@@ -155,7 +245,7 @@ function DevicesTab() {
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-1">
-                          <button onClick={() => openEdit(d)} className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Assign Branch">
+                          <button onClick={() => setEditDevice(d)} className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Edit Device">
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button onClick={() => { if(confirm("Remove this device?")) remove.mutate({ id: d.id }); }}
