@@ -103,6 +103,8 @@ export default function Settings() {
   const [dbSaved, setDbSaved] = useState(false);
   const [dbCopied, setDbCopied] = useState(false);
   const [dbTesting, setDbTesting] = useState(false);
+  const [dbApplying, setDbApplying] = useState(false);
+  const [dbApplyResult, setDbApplyResult] = useState<{ success: boolean; message: string } | null>(null);
   const [dbTestResult, setDbTestResult] = useState<{ success: boolean; message: string } | null>(() => {
     const s = localStorage.getItem("db_status");
     return s ? JSON.parse(s) : null;
@@ -153,11 +155,31 @@ export default function Settings() {
 
   function handleSaveDb() {
     localStorage.setItem("db_settings", JSON.stringify(dbSettings));
-    if (!dbTestResult) {
-      localStorage.setItem("db_status", JSON.stringify({ success: false, message: "Saved — connection not tested yet." }));
-      setDbTestResult({ success: false, message: "Saved — connection not tested yet." });
-    }
     saveFn(setDbSaved);
+  }
+
+  async function handleApplyDb() {
+    setDbApplying(true);
+    setDbApplyResult(null);
+    try {
+      const r = await fetch(apiUrl("/settings/db/apply"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dbSettings),
+      });
+      const d = await r.json();
+      if (d.success) {
+        localStorage.setItem("db_settings", JSON.stringify(dbSettings));
+        localStorage.setItem("db_status", JSON.stringify({ success: true, message: "Applied & connected" }));
+        setDbTestResult({ success: true, message: "Applied & connected" });
+        setDbApplyResult({ success: true, message: "Server is restarting with new database..." });
+      } else {
+        setDbApplyResult({ success: false, message: d.message || "Failed to apply." });
+      }
+    } catch {
+      setDbApplyResult({ success: false, message: "Could not reach server." });
+    }
+    setDbApplying(false);
   }
 
   const [hrSettings, setHrSettings] = useState({
@@ -759,19 +781,46 @@ export default function Settings() {
               {dbCopied && <p className="text-xs text-green-600 mt-1">Copied to clipboard!</p>}
             </Card>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {/* Apply result */}
+            {dbApplyResult && (
+              <div className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-xl border text-xs",
+                dbApplyResult.success
+                  ? "bg-green-50 border-green-200 text-green-800"
+                  : "bg-red-50 border-red-200 text-red-800"
+              )}>
+                {dbApplyResult.success
+                  ? <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                  : <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />}
+                <span>{dbApplyResult.message}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs">
                 {dbTestResult ? (
                   dbTestResult.success
                     ? <span className="flex items-center gap-1.5 text-green-600 font-medium"><CheckCircle2 className="w-3.5 h-3.5" />Connection verified</span>
-                    : <span className="flex items-center gap-1.5 text-amber-600 font-medium"><AlertTriangle className="w-3.5 h-3.5" />{dbTestResult.message}</span>
+                    : <span className="flex items-center gap-1.5 text-red-500 font-medium"><AlertTriangle className="w-3.5 h-3.5" />{dbTestResult.message}</span>
                 ) : (
-                  <span className="text-muted-foreground">Connection not tested</span>
+                  <span className="text-muted-foreground italic">Connection not tested yet</span>
                 )}
               </div>
-              <Button className="text-xs flex items-center gap-2" onClick={handleSaveDb}>
-                {dbSaved ? <><Check className="w-3.5 h-3.5 text-green-400" />Saved!</> : "Save Settings"}
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" className="text-xs flex items-center gap-2" onClick={handleSaveDb}>
+                  {dbSaved ? <><Check className="w-3.5 h-3.5 text-green-500" />Saved</> : "Save Credentials"}
+                </Button>
+                <Button
+                  className="text-xs flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white"
+                  onClick={handleApplyDb}
+                  disabled={dbApplying}
+                  title="Tests connection, saves to server and restarts to apply"
+                >
+                  {dbApplying
+                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" />Applying...</>
+                    : <><Database className="w-3.5 h-3.5" />Apply & Restart</>}
+                </Button>
+              </div>
             </div>
           </div>
         )}
