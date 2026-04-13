@@ -47,6 +47,35 @@ async function findOrNoteDevice(sn: string, ip: string): Promise<typeof biometri
   }
 }
 
+/**
+ * Parse a single ZKTeco ATTLOG line.
+ * ZKTeco sends two possible formats:
+ *   Format A: PIN\tDATE\tTIME\tSTATUS\tVERIFY\tWORKCODE  (date/time separate)
+ *   Format B: PIN\tDATETIME\tSTATUS\tVERIFY\tWORKCODE    (datetime combined)
+ */
+function parseAttlogLine(line: string): { biometricId: string; datetimeStr: string; statusCode: string } | null {
+  const parts = line.split("\t");
+  if (parts.length < 3) return null;
+
+  const biometricId = parts[0].trim();
+  if (!biometricId) return null;
+
+  let datetimeStr: string;
+  let statusCode: string;
+
+  // Format A: parts[1] = "YYYY-MM-DD", parts[2] = "HH:MM:SS"
+  if (/^\d{4}-\d{2}-\d{2}$/.test(parts[1]) && /^\d{2}:\d{2}:\d{2}$/.test(parts[2] || "")) {
+    datetimeStr = `${parts[1]} ${parts[2]}`;
+    statusCode = (parts[3] || "0").trim();
+  } else {
+    // Format B: parts[1] = "YYYY-MM-DD HH:MM:SS", parts[2] = status
+    datetimeStr = parts[1].trim();
+    statusCode = (parts[2] || "0").trim();
+  }
+
+  return { biometricId, datetimeStr, statusCode };
+}
+
 router.get("/cdata", async (req: Request, res: Response) => {
   const sn = (req.query.SN as string) || "";
   const options = (req.query.options as string) || "";
@@ -97,11 +126,10 @@ router.post("/cdata", async (req: Request, res: Response) => {
 
     for (const line of lines) {
       try {
-        const parts = line.split("\t");
-        if (parts.length < 3) continue;
+        const parsed = parseAttlogLine(line);
+        if (!parsed) continue;
 
-        const [biometricId, , datetimeStr] = parts;
-        const statusCode = parts[1];
+        const { biometricId, datetimeStr, statusCode } = parsed;
 
         let punchType: "in" | "out" | "unknown" = "unknown";
         if (statusCode === "0") punchType = "in";
