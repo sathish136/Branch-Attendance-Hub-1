@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PageHeader, Card, Button, Input, Label, Select } from "@/components/ui";
+import { PageHeader, Card, Button, Input, Label, Select, useConfirm } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Plus, Edit2, Trash2, X, Network, MapPin, User, Building2, Search } from "lucide-react";
 
@@ -75,6 +75,7 @@ export default function Branches() {
   }
   function set(k: string, v: any) { setForm(f => ({ ...f, [k]: v })); }
 
+  const { confirm: doConfirm, dialog: confirmDialog } = useConfirm();
   const isPending = createB.isPending || updateB.isPending;
   const headOffices = branches.filter((b: any) => b.type === "head_office");
   const regionals   = branches.filter((b: any) => b.type === "regional");

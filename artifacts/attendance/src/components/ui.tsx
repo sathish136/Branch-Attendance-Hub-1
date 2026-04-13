@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { cn } from "@/lib/utils";
-import { X } from "lucide-react";
+import { X, AlertTriangle } from "lucide-react";
 
 // --- Card ---
 export function Card({ className, children }: { className?: string, children: React.ReactNode }) {
@@ -160,4 +160,71 @@ export function PageHeader({ title, description, action }: { title: string, desc
       {action && <div>{action}</div>}
     </div>
   );
+}
+
+// --- ConfirmDialog ---
+interface ConfirmDialogProps {
+  open: boolean;
+  title?: string;
+  message: string;
+  confirmLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  danger?: boolean;
+}
+
+export function ConfirmDialog({ open, title = "Confirm", message, confirmLabel = "Confirm", onConfirm, onCancel, danger = true }: ConfirmDialogProps) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
+      <div className="relative bg-card border border-border rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 z-10">
+        <div className="flex items-start gap-3">
+          {danger && <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />}
+          <div>
+            <h3 className="font-semibold text-sm text-foreground">{title}</h3>
+            <p className="text-sm text-muted-foreground mt-1">{message}</p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end mt-5">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-muted transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={cn(
+              "px-3 py-1.5 text-sm rounded-lg font-medium transition-colors",
+              danger ? "bg-red-500 text-white hover:bg-red-600" : "bg-primary text-primary-foreground hover:brightness-110"
+            )}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function useConfirm() {
+  const [state, setState] = useState<{ message: string; title?: string; confirmLabel?: string; danger?: boolean; resolve: (v: boolean) => void } | null>(null);
+
+  const confirm = (message: string, opts?: { title?: string; confirmLabel?: string; danger?: boolean }) =>
+    new Promise<boolean>(resolve => setState({ message, ...opts, resolve }));
+
+  const dialog = state ? (
+    <ConfirmDialog
+      open={true}
+      message={state.message}
+      title={state.title}
+      confirmLabel={state.confirmLabel}
+      danger={state.danger ?? true}
+      onConfirm={() => { state.resolve(true); setState(null); }}
+      onCancel={() => { state.resolve(false); setState(null); }}
+    />
+  ) : null;
+
+  return { confirm, dialog };
 }

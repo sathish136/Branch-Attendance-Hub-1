@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useListHolidays, useCreateHoliday, useDeleteHoliday } from "@workspace/api-client-react";
-import { PageHeader, Card, Button, Input, Label, Select } from "@/components/ui";
+import { PageHeader, Card, Button, Input, Label, Select, useConfirm } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
   Calendar, Plus, Trash2, Copy, Check, Building, Clock,

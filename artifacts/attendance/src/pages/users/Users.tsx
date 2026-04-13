@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser, useListBranches } from "@workspace/api-client-react";
-import { PageHeader, Card, Button, Input, Select, Label } from "@/components/ui";
+import { PageHeader, Card, Button, Input, Select, Label, useConfirm } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Plus, Edit2, Trash2, ShieldCheck, Eye, Building2 } from "lucide-react";
 
@@ -50,10 +50,12 @@ export default function Users() {
     setForm(f => ({ ...f, branchIds: f.branchIds.includes(id) ? f.branchIds.filter(b => b !== id) : [...f.branchIds, id] }));
   }
 
+  const { confirm: doConfirm, dialog: confirmDialog } = useConfirm();
   const branchMap = new Map((branches || []).map(b => [b.id, b.name]));
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
       <PageHeader title="User Management" description="Manage system users and their branch access permissions." />
 
       <div className="flex justify-end">
@@ -187,7 +189,7 @@ export default function Users() {
                           <button onClick={() => openEdit(u)} className="p-1.5 hover:bg-muted rounded text-muted-foreground">
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => { if(confirm(`Delete user "${u.username}"?`)) remove.mutate({ id: u.id }); }}
+                          <button onClick={async () => { if(await doConfirm(`Delete user "${u.username}"?`, { title: "Delete User" })) remove.mutate({ id: u.id }); }}
                             className="p-1.5 hover:bg-red-100 text-red-500 rounded">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

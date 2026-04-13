@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useListBiometricDevices, useUpdateBiometricDevice, useDeleteBiometricDevice, useListBranches, useListBiometricLogs } from "@workspace/api-client-react";
-import { PageHeader, Card, Button, Select, Label } from "@/components/ui";
+import { PageHeader, Card, Button, Select, Label, useConfirm } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy, Radio, XCircle } from "lucide-react";
 

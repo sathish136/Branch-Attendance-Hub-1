@@ -4,7 +4,7 @@ import {
   useListEmployees, useCreateEmployee, useUpdateEmployee, useDeleteEmployee,
   useListBranches
 } from "@workspace/api-client-react";
-import { PageHeader, Card, Button, Input, Label, Select } from "@/components/ui";
+import { PageHeader, Card, Button, Input, Label, Select, useConfirm } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
   Search, Plus, Edit2, Trash2, Download, Mail,
