@@ -273,6 +273,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
 
 function SetupGuide() {
   const domain = typeof window !== "undefined" ? window.location.origin : "https://your-domain.com";
+  const serverIp = "172.31.123.162";
   return (
     <div className="space-y-4 max-w-4xl">
       <Card className="p-5 border-blue-200 bg-blue-50/20">
@@ -289,6 +290,7 @@ function SetupGuide() {
             <h4 className="font-semibold text-sm mb-2">Step 1: Server URLs to configure in device</h4>
             <div className="space-y-2">
               <CopyField label="ADMS Server Domain" value={domain} />
+              <CopyField label="Server IP Address" value={serverIp} />
               <CopyField label="ZK Push Endpoint" value={`${domain}/api/biometric/push`} />
               <CopyField label="Server Port" value="3333" />
             </div>
