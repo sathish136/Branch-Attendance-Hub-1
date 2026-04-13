@@ -6,6 +6,32 @@ import { autoSync } from "../lib/biometric-sync.js";
 
 const router = Router();
 
+/**
+ * Update an employee's name from the ZKTeco device data.
+ * Only updates if the employee's current name is the auto-generated placeholder ("Employee <pin>")
+ * or if firstName/lastName haven't been set manually, so real names are preserved.
+ */
+async function updateEmployeeNameFromDevice(pin: string, deviceName: string): Promise<void> {
+  if (!deviceName || !pin) return;
+  try {
+    const [emp] = await db.select().from(employees).where(eq(employees.biometricId, pin));
+    if (!emp) return;
+
+    // Only update if the name is still the auto-generated placeholder or blank
+    const isPlaceholder = emp.fullName === `Employee ${pin}` || !emp.fullName;
+    const noFirstLastSet = !emp.firstName && !emp.lastName;
+
+    if (isPlaceholder && noFirstLastSet) {
+      await db.update(employees)
+        .set({ fullName: deviceName })
+        .where(eq(employees.biometricId, pin));
+      console.log(`[ADMS] Updated employee name for PIN=${pin}: "${deviceName}"`);
+    }
+  } catch (err) {
+    console.error(`[ADMS] Failed to update employee name for PIN=${pin}:`, err);
+  }
+}
+
 router.use((_req, res, next) => {
   res.setHeader("Content-Type", "text/plain");
   next();
@@ -176,8 +202,55 @@ router.post("/cdata", async (req: Request, res: Response) => {
     return;
   }
 
+  // OPERLOG: ZKTeco devices send user enrollment records in operation log
+  // Format: OPLOG <OpType>\t<PIN>\t<Name>\t<Card>\t<Password>\t<Grp>\t...
   if (table === "OPERLOG") {
-    console.log(`[ADMS] OPERLOG received for SN=${sn} (ignored)`);
+    const body = typeof req.body === "string" ? req.body : "";
+    const lines = body.split("\n").map((l: string) => l.trim()).filter(Boolean);
+    let updated = 0;
+    for (const line of lines) {
+      try {
+        // OPLOG 4 = user add/update; also handle generic OPLOG lines
+        const match = line.match(/^OPLOG\s+\d+\t(\S+)\t([^\t]*)/i);
+        if (match) {
+          const pin = match[1].trim();
+          const name = match[2].trim();
+          if (pin && name) {
+            await updateEmployeeNameFromDevice(pin, name);
+            updated++;
+          }
+        }
+      } catch (err) {
+        console.error(`[ADMS] OPERLOG parse error for line: "${line}"`, err);
+      }
+    }
+    console.log(`[ADMS] OPERLOG: updated ${updated} employee names for SN=${sn}`);
+    res.send("OK");
+    return;
+  }
+
+  // USERINFO: some ZKTeco firmware versions send user data in a dedicated table
+  // Format: PIN\tName\tPassword\tCard\tGroup\t...
+  if (table === "USERINFO") {
+    const body = typeof req.body === "string" ? req.body : "";
+    const lines = body.split("\n").map((l: string) => l.trim()).filter(Boolean);
+    let updated = 0;
+    for (const line of lines) {
+      try {
+        const parts = line.split("\t");
+        if (parts.length >= 2) {
+          const pin = parts[0].trim();
+          const name = parts[1].trim();
+          if (pin && name) {
+            await updateEmployeeNameFromDevice(pin, name);
+            updated++;
+          }
+        }
+      } catch (err) {
+        console.error(`[ADMS] USERINFO parse error for line: "${line}"`, err);
+      }
+    }
+    console.log(`[ADMS] USERINFO: updated ${updated} employee names for SN=${sn}`);
     res.send("OK");
     return;
   }
