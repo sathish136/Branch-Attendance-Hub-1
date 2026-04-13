@@ -87,10 +87,13 @@ async function ensureTables() {
       END $$;
     `);
 
-    // Add unique partial index on biometric_id (prevents race-condition duplicates)
+    // Composite unique index: same PIN allowed in different branches
     await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS employees_biometric_id_unique
-      ON employees (biometric_id)
+      DROP INDEX IF EXISTS employees_biometric_id_unique;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS employees_biometric_branch_unique
+      ON employees (biometric_id, branch_id)
       WHERE biometric_id IS NOT NULL;
     `);
 

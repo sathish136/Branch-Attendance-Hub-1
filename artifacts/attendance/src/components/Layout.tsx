@@ -51,7 +51,7 @@ function useNotifications() {
       const notifs: NotifItem[] = [];
       try {
         const [devRes, todayRes] = await Promise.allSettled([
-          fetch(_apiUrl("/biometric")).then(r => r.json()),
+          fetch(_apiUrl("/biometric/devices")).then(r => r.json()),
           fetch(_apiUrl("/attendance/today")).then(r => r.json()),
         ]);
 
