@@ -33,17 +33,16 @@ router.post("/devices", async (req, res) => {
 router.put("/devices/:id", async (req, res) => {
   try {
     const devId = Number(req.params.id);
-    const [before] = await db.select().from(biometricDevices).where(eq(biometricDevices.id, devId));
 
     const [dev] = await db.update(biometricDevices).set(req.body).where(eq(biometricDevices.id, devId)).returning();
     const [br] = await db.select().from(branches).where(eq(branches.id, dev.branchId));
 
+    // Await the sync so pending logs are processed before the response returns
+    const effectiveBranchId = dev.branchId ?? null;
     let employeesCreated = 0;
-    const newBranchId = req.body.branchId;
-    if (newBranchId) {
-      autoSync(devId, Number(newBranchId));
-    } else if (dev.branchId) {
-      autoSync(devId, dev.branchId);
+    if (effectiveBranchId) {
+      employeesCreated = await autoCreateEmployees(devId, effectiveBranchId);
+      await processAttendance(devId);
     }
 
     res.json({

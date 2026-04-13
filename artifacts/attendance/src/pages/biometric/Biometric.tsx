@@ -385,11 +385,8 @@ function LogsTab() {
                     {l.processed ? (
                       <span className="text-green-600">✓ Processed</span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-amber-600" title={!l.employeeId || l.employeeName === "Unknown" ? "Device has no branch assigned — assign a branch then click Reprocess Pending" : "Waiting to be processed"}>
+                      <span className="inline-flex items-center gap-1 text-amber-600" title="Click Reprocess Pending to resolve">
                         ⏳ Pending
-                        {(!l.employeeId || l.employeeName === "Unknown") && (
-                          <span className="text-xs text-muted-foreground">(no branch)</span>
-                        )}
                       </span>
                     )}
                   </td>
