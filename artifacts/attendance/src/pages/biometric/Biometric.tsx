@@ -160,7 +160,12 @@ function DevicesTab() {
                       <td className="px-3 py-2 font-medium">{d.name}</td>
                       <td className="px-3 py-2 text-muted-foreground">{d.model}</td>
                       <td className="px-3 py-2 font-mono text-muted-foreground">{d.serialNumber}</td>
-                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap max-w-[100px] truncate">{d.branchName}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {d.branchName
+                          ? <span className="text-muted-foreground">{d.branchName}</span>
+                          : <span className="text-amber-600 font-medium text-xs bg-amber-50 px-2 py-0.5 rounded border border-amber-200">⚠ Assign Branch</span>
+                        }
+                      </td>
                       <td className="px-3 py-2 font-mono">{d.ipAddress}</td>
                       <td className="px-3 py-2 font-mono">{d.port}</td>
                       <td className="px-3 py-2">
@@ -272,8 +277,13 @@ function CopyField({ label, value }: { label: string; value: string }) {
 }
 
 function SetupGuide() {
-  const domain = typeof window !== "undefined" ? window.location.origin : "https://your-domain.com";
-  const serverIp = "172.31.123.162";
+  const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  const apiPort = isLocal ? "3000" : window.location.port || (window.location.protocol === "https:" ? "443" : "80");
+  const apiOrigin = isLocal
+    ? `http://localhost:3000`
+    : window.location.origin;
+  const serverIp = window.location.hostname;
+
   return (
     <div className="space-y-4 max-w-4xl">
       <Card className="p-5 border-blue-200 bg-blue-50/20">
@@ -282,17 +292,16 @@ function SetupGuide() {
           <h3 className="font-semibold text-sm text-blue-900">ZKTeco ADMS (ZK Push) Configuration</h3>
         </div>
         <p className="text-xs text-muted-foreground mb-4">
-          ZK Push (Attendance Data Management System) allows ZKTeco biometric devices to automatically push attendance data to this server over HTTP/HTTPS. Follow the steps below to configure each device.
+          ZK Push (Attendance Data Management System) allows ZKTeco biometric devices to automatically push attendance data to this server over HTTP/HTTPS. Once configured, devices will appear automatically in the Devices tab and attendance logs will be recorded in Push Logs.
         </p>
 
         <div className="space-y-5">
           <div>
             <h4 className="font-semibold text-sm mb-2">Step 1: Server URLs to configure in device</h4>
             <div className="space-y-2">
-              <CopyField label="ADMS Server Domain" value={domain} />
-              <CopyField label="Server IP Address" value={serverIp} />
-              <CopyField label="ZK Push Endpoint" value={`${domain}/api/biometric/push`} />
-              <CopyField label="Server Port" value="3333" />
+              <CopyField label="ADMS Server Address / Domain" value={serverIp} />
+              <CopyField label="Server Port" value={apiPort} />
+              <CopyField label="ADMS Endpoint (full URL)" value={`${apiOrigin}/iclock/cdata`} />
             </div>
           </div>
 
@@ -300,13 +309,13 @@ function SetupGuide() {
             <h4 className="font-semibold text-sm mb-3">Step 2: Configure the ZKTeco Device</h4>
             <div className="space-y-2">
               {[
-                ["1. Access Device Menu", "Press Menu on the device → Go to Comm. Settings → Cloud Server Settings"],
+                ["1. Access Device Menu", "Press Menu on the device → Go to Comm. Settings → Cloud Server Settings (ADMS)"],
                 ["2. Enable ADMS", "Set ADMS Enable = Yes / On"],
-                ["3. Server Address", `Enter the ADMS Server Domain: ${domain}`],
-                ["4. Server Port", "Set port to 3333"],
-                ["5. ADMS Upload Interval", "Set to 5 minutes (recommended)"],
+                ["3. Server Address", `Enter the server IP or domain: ${serverIp}`],
+                ["4. Server Port", `Set port to ${apiPort}`],
+                ["5. ADMS Upload Interval", "Set to 1–5 minutes (recommended)"],
                 ["6. Enable Push", "Enable Attendance Push, enable Real-time Upload if available"],
-                ["7. Save & Restart", "Save settings and restart the device to apply changes"],
+                ["7. Save & Restart", "Save settings and restart the device — it will appear in the Devices tab automatically"],
               ].map(([title, desc]) => (
                 <div key={title} className="flex gap-3 p-3 bg-card rounded-lg border border-border">
                   <div className="text-xs">
