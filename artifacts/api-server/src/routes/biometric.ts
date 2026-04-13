@@ -59,9 +59,14 @@ router.put("/devices/:id", async (req, res) => {
 
 router.delete("/devices/:id", async (req, res) => {
   try {
-    await db.delete(biometricDevices).where(eq(biometricDevices.id, Number(req.params.id)));
+    const devId = Number(req.params.id);
+    await db.delete(biometricLogs).where(eq(biometricLogs.deviceId, devId));
+    await db.delete(biometricDevices).where(eq(biometricDevices.id, devId));
     res.json({ message: "Deleted", success: true });
-  } catch (e) { res.status(500).json({ message: "Error", success: false }); }
+  } catch (e: any) {
+    console.error("Delete device error:", e?.message || e);
+    res.status(500).json({ message: e?.message || "Error deleting device", success: false });
+  }
 });
 
 router.post("/devices/:id/test", async (req, res) => {

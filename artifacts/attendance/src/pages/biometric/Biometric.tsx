@@ -248,7 +248,7 @@ function DevicesTab() {
                           <button onClick={() => setEditDevice(d)} className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Edit Device">
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button onClick={() => { if(confirm("Remove this device?")) remove.mutate({ id: d.id }); }}
+                          <button onClick={() => { if(confirm("Remove this device?")) remove.mutate({ id: d.id }, { onSuccess: () => { refetch(); handleSaved("Device removed."); } }); }}
                             className="p-1.5 hover:bg-red-100 text-red-500 rounded" title="Delete">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
