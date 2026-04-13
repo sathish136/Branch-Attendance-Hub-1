@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useListBiometricDevices, useUpdateBiometricDevice, useDeleteBiometricDevice, useListBranches, useListBiometricLogs } from "@workspace/api-client-react";
 import { PageHeader, Card, Button, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy, Radio } from "lucide-react";
+import { Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy, Radio, RotateCcw } from "lucide-react";
 
 const DEVICE_STATUS: Record<string, { cls: string; icon: React.ElementType }> = {
   online: { cls: "bg-green-100 text-green-700", icon: Wifi },
@@ -170,11 +170,34 @@ function DevicesTab() {
 
   const [editDevice, setEditDevice] = useState<any | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [syncingId, setSyncingId] = useState<number | null>(null);
 
   function handleSaved(msg: string) {
     setSuccessMsg(msg);
     refetch();
     setTimeout(() => setSuccessMsg(null), 8000);
+  }
+
+  async function handleSync(deviceId: number) {
+    setSyncingId(deviceId);
+    try {
+      const res = await fetch(`/api/biometric/devices/${deviceId}/sync-attendance`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Sync failed");
+      const { employeesCreated, attendanceCreated, attendanceUpdated } = data;
+      const parts = [];
+      if (employeesCreated > 0) parts.push(`${employeesCreated} employee${employeesCreated !== 1 ? "s" : ""} created`);
+      if (attendanceCreated > 0) parts.push(`${attendanceCreated} attendance record${attendanceCreated !== 1 ? "s" : ""} created`);
+      if (attendanceUpdated > 0) parts.push(`${attendanceUpdated} record${attendanceUpdated !== 1 ? "s" : ""} updated`);
+      setSuccessMsg(parts.length ? `Sync complete — ${parts.join(", ")}.` : "Sync complete — everything is already up to date.");
+      refetch();
+      setTimeout(() => setSuccessMsg(null), 10000);
+    } catch (e: any) {
+      setSuccessMsg(`Sync error: ${e.message}`);
+      setTimeout(() => setSuccessMsg(null), 6000);
+    } finally {
+      setSyncingId(null);
+    }
   }
 
   return (
