@@ -232,6 +232,15 @@ const EMPTY_EMP = {
 };
 
 function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branches: any[]; onClose: () => void; onSaved: () => void }) {
+  const { data: apiDepts } = useGet(["departments"], "/departments");
+  const { data: apiDesigs } = useGet(["designations"], "/designations");
+  const deptOptions: string[] = Array.isArray(apiDepts) && apiDepts.length > 0
+    ? apiDepts.map((d: any) => d.name)
+    : DEPT_LIST;
+  const desigOptions: string[] = Array.isArray(apiDesigs) && apiDesigs.length > 0
+    ? apiDesigs.map((d: any) => d.name)
+    : DESIGNATION_LIST;
+
   const [tab, setTab] = useState<"personal"|"professional"|"documents">("personal");
   const [form, setForm] = useState(emp ? {
     ...EMPTY_EMP, ...emp,
@@ -589,14 +598,14 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
                     <Label className="text-xs font-semibold mb-1.5 block">Department <span className="text-red-500">*</span></Label>
                     <Select value={form.department} onChange={e => set("department", e.target.value)}>
                       <option value="">— Select Department —</option>
-                      {DEPT_LIST.map(d => <option key={d} value={d}>{d}</option>)}
+                      {deptOptions.map(d => <option key={d} value={d}>{d}</option>)}
                     </Select>
                   </div>
                   <div>
                     <Label className="text-xs font-semibold mb-1.5 block">Designation <span className="text-red-500">*</span></Label>
                     <Select value={form.designation} onChange={e => set("designation", e.target.value)}>
                       <option value="">— Select Designation —</option>
-                      {DESIGNATION_LIST.map(d => <option key={d} value={d}>{d}</option>)}
+                      {desigOptions.map(d => <option key={d} value={d}>{d}</option>)}
                     </Select>
                   </div>
                   <div>
