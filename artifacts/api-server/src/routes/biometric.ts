@@ -201,6 +201,34 @@ router.post("/push-logs", async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Error" }); }
 });
 
+// POST /api/biometric/sync-users
+// Called by push.py to sync employee names from ZKTeco device user data.
+// Body: { users: [{ pin: string, name: string, sn?: string }] }
+router.post("/sync-users", async (req, res) => {
+  try {
+    const { users } = req.body as { users: Array<{ pin: string; name: string; sn?: string }> };
+    if (!Array.isArray(users)) {
+      res.status(400).json({ success: false, message: "users[] required" }); return;
+    }
+    let updated = 0;
+    for (const u of users) {
+      const pin = String(u.pin || "").trim();
+      const name = (u.name || "").trim();
+      if (!pin || !name) continue;
+
+      const [emp] = await db.select().from(employees).where(eq(employees.biometricId, pin));
+      if (!emp) continue;
+
+      await db.update(employees)
+        .set({ fullName: name })
+        .where(eq(employees.biometricId, pin));
+      updated++;
+      console.log(`[BioSync] Name updated for PIN=${pin}: "${name}"`);
+    }
+    res.json({ success: true, updated });
+  } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Error" }); }
+});
+
 router.delete("/logs", async (req, res) => {
   try {
     const { deviceId } = req.query;
