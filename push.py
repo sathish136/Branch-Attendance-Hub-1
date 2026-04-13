@@ -30,8 +30,14 @@ from flask import Flask, request, Response, jsonify
 # ============================================================================
 
 APP_HOST = "0.0.0.0"
-APP_PORT = 3333
+APP_PORT = int(os.environ.get("ADMS_PORT", 3333))
 DB_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "push.db")
+
+_REPLIT_DEV_DOMAIN = os.environ.get("REPLIT_DEV_DOMAIN", "")
+if _REPLIT_DEV_DOMAIN:
+    PUBLIC_BASE_URL = f"https://{APP_PORT}-{_REPLIT_DEV_DOMAIN}"
+else:
+    PUBLIC_BASE_URL = f"http://localhost:{APP_PORT}"
 
 PG_DATABASE_URL: Optional[str] = None
 pg_conn = None
@@ -468,7 +474,7 @@ def home():
         f"<div class='card' style='text-align:center'><div class='num' style='color:#dc3545'>{a}</div>Punches</div>"
         f"</div><div class='card'><h3>Latest Punches</h3>"
         f"<table><tr><th>PIN</th><th>Name</th><th>Time</th><th>Status</th></tr>{trs}</table></div>"
-        f"<div class='card'><b>ADMS:</b> <code>http://&lt;server&gt;:{APP_PORT}/iclock/cdata</code></div>"
+        f"<div class='card'><b>ADMS Server URL:</b> <code>{PUBLIC_BASE_URL}/iclock/cdata</code></div>"
     )
     return _BASE.format(body=body)
 
