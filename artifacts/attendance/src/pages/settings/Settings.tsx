@@ -1,11 +1,11 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useListHolidays, useCreateHoliday, useDeleteHoliday } from "@workspace/api-client-react";
 import { PageHeader, Card, Button, Input, Label, Select } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
   Calendar, Plus, Trash2, Copy, Check, Building, Clock,
   Fingerprint, Users, ShieldCheck, FileText, Briefcase, ChevronRight,
-  Database, Download, AlertTriangle, CheckCircle2, Upload, X
+  Database, Download, AlertTriangle, CheckCircle2, Upload, X, RefreshCw, Wifi
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -102,13 +102,49 @@ export default function Settings() {
 
   const [dbSaved, setDbSaved] = useState(false);
   const [dbCopied, setDbCopied] = useState(false);
+  const [dbTesting, setDbTesting] = useState(false);
+  const [dbTestResult, setDbTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [dbSettings, setDbSettings] = useState(() => {
     const saved = localStorage.getItem("db_settings");
     if (saved) return JSON.parse(saved);
     return { host: "122.165.225.42", port: "5432", database: "colombo", user: "postgres", password: "wtt@adm123" };
   });
-  function setDb(k: string, v: string) { setDbSettings((s: any) => ({ ...s, [k]: v })); }
+  const [dbLoaded, setDbLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch(apiUrl("/settings/db/current"))
+      .then(r => r.json())
+      .then(d => {
+        if (!localStorage.getItem("db_settings")) {
+          setDbSettings((s: any) => ({ ...s, host: d.host, port: d.port, database: d.database, user: d.user }));
+        }
+        setDbLoaded(true);
+      })
+      .catch(() => setDbLoaded(true));
+  }, []);
+
+  function setDb(k: string, v: string) {
+    setDbSettings((s: any) => ({ ...s, [k]: v }));
+    setDbTestResult(null);
+  }
   const dbConnStr = `postgresql://${dbSettings.user}:${encodeURIComponent(dbSettings.password)}@${dbSettings.host}:${dbSettings.port}/${dbSettings.database}`;
+
+  async function handleTestDb() {
+    setDbTesting(true);
+    setDbTestResult(null);
+    try {
+      const r = await fetch(apiUrl("/settings/db/test"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dbSettings),
+      });
+      const d = await r.json();
+      setDbTestResult(d);
+    } catch {
+      setDbTestResult({ success: false, message: "Could not reach the server." });
+    }
+    setDbTesting(false);
+  }
 
   const [hrSettings, setHrSettings] = useState({
     annualLeave: "21", sickLeave: "12", casualLeave: "7",
@@ -624,14 +660,33 @@ export default function Settings() {
         {/* ── Database ──────────────────────────────────────── */}
         {activeTab === "database" && (
           <div className="space-y-4">
+
+            {/* Test result banner */}
+            {dbTestResult && (
+              <div className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-xl border text-sm",
+                dbTestResult.success
+                  ? "bg-green-50 border-green-200 text-green-800"
+                  : "bg-red-50 border-red-200 text-red-800"
+              )}>
+                {dbTestResult.success
+                  ? <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                  : <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />}
+                <span className="text-xs">{dbTestResult.message}</span>
+                <button className="ml-auto text-xs opacity-60 hover:opacity-100" onClick={() => setDbTestResult(null)}>✕</button>
+              </div>
+            )}
+
             <Card className="p-5 border-orange-200 bg-orange-50/20">
               <div className="flex items-center gap-2 mb-4 pb-3 border-b border-orange-100">
                 <Database className="w-4 h-4 text-orange-600" />
                 <span className="text-sm font-bold">Database Connection</span>
-                <span className="ml-auto text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-mono">PostgreSQL</span>
+                <span className={cn("ml-auto text-xs px-2 py-0.5 rounded font-mono", dbLoaded ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700")}>
+                  {dbLoaded ? "Active" : "Loading..."}
+                </span>
               </div>
               <p className="text-xs text-muted-foreground mb-4">
-                Update the database connection credentials below. After saving, update the <code className="bg-muted px-1 rounded">COLOMBO_DB_URL</code> environment variable or the hardcoded fallback in <code className="bg-muted px-1 rounded">lib/db/src/index.ts</code> with the generated connection string.
+                Enter credentials and click <strong>Test Connection</strong> to validate before updating. To apply a new database, copy the connection string into <code className="bg-muted px-1 rounded">COLOMBO_DB_URL</code> in <code className="bg-muted px-1 rounded">lib/db/src/index.ts</code> and restart the server.
               </p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
@@ -655,15 +710,31 @@ export default function Settings() {
                   <Input type="password" value={dbSettings.password} onChange={e => setDb("password", e.target.value)} placeholder="••••••••" className="font-mono text-xs" />
                 </div>
               </div>
+
+              <div className="mt-4 flex justify-end">
+                <Button
+                  className={cn("text-xs flex items-center gap-2", dbTestResult?.success ? "bg-green-600 hover:bg-green-700 text-white" : "")}
+                  onClick={handleTestDb}
+                  disabled={dbTesting}
+                >
+                  {dbTesting ? (
+                    <><RefreshCw className="w-3.5 h-3.5 animate-spin" />Testing...</>
+                  ) : dbTestResult?.success ? (
+                    <><CheckCircle2 className="w-3.5 h-3.5" />Connection OK</>
+                  ) : (
+                    <><Wifi className="w-3.5 h-3.5" />Test Connection</>
+                  )}
+                </Button>
+              </div>
             </Card>
 
             <Card className="p-5">
               <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border">
                 <span className="text-sm font-bold">Generated Connection String</span>
               </div>
-              <Label className="text-xs">Connection URL (copy to code / environment variable)</Label>
+              <Label className="text-xs">Connection URL — copy this into your code / environment variable</Label>
               <div className="flex items-center gap-2 mt-1">
-                <code className="flex-1 bg-muted px-3 py-2.5 rounded-lg text-xs font-mono border border-border break-all">{dbConnStr}</code>
+                <code className="flex-1 bg-muted px-3 py-2.5 rounded-lg text-xs font-mono border border-border break-all select-all">{dbConnStr}</code>
                 <button
                   onClick={() => { navigator.clipboard.writeText(dbConnStr); setDbCopied(true); setTimeout(() => setDbCopied(false), 2000); }}
                   className="p-2.5 hover:bg-muted rounded-lg border border-border transition-colors shrink-0"
@@ -679,7 +750,7 @@ export default function Settings() {
                 localStorage.setItem("db_settings", JSON.stringify(dbSettings));
                 saveFn(setDbSaved);
               }}>
-                {dbSaved ? <><Check className="w-3.5 h-3.5 text-green-400" />Saved!</> : "Save DB Settings"}
+                {dbSaved ? <><Check className="w-3.5 h-3.5 text-green-400" />Saved!</> : "Save Settings"}
               </Button>
             </div>
           </div>

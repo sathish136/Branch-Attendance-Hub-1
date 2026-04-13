@@ -2,6 +2,8 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { systemSettings, holidays } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import pg from "pg";
+const { Client } = pg;
 
 const router = Router();
 
@@ -52,6 +54,45 @@ router.delete("/holidays/:id", async (req, res) => {
     await db.delete(holidays).where(eq(holidays.id, Number(req.params.id)));
     res.json({ message: "Deleted", success: true });
   } catch (e) { res.status(500).json({ message: "Error", success: false }); }
+});
+
+router.get("/db/current", (_req, res) => {
+  const raw = process.env.COLOMBO_DB_URL || "postgresql://postgres:wtt%40adm123@122.165.225.42:5432/colombo";
+  try {
+    const url = new URL(raw);
+    res.json({
+      host: url.hostname,
+      port: url.port || "5432",
+      database: url.pathname.replace("/", ""),
+      user: url.username,
+      connected: true,
+    });
+  } catch {
+    res.json({ host: "unknown", port: "5432", database: "unknown", user: "unknown", connected: false });
+  }
+});
+
+router.post("/db/test", async (req, res) => {
+  const { host, port, database, user, password } = req.body;
+  if (!host || !database || !user) {
+    res.status(400).json({ success: false, message: "Host, database name and username are required." });
+    return;
+  }
+  const client = new Client({
+    host, port: Number(port) || 5432, database, user, password,
+    connectionTimeoutMillis: 5000,
+    ssl: false,
+  });
+  try {
+    await client.connect();
+    const result = await client.query("SELECT version()");
+    const version = result.rows[0]?.version?.split(" ").slice(0, 2).join(" ") || "PostgreSQL";
+    await client.end();
+    res.json({ success: true, message: `Connected successfully — ${version}` });
+  } catch (e: any) {
+    try { await client.end(); } catch {}
+    res.json({ success: false, message: e.message || "Connection failed" });
+  }
 });
 
 export default router;
