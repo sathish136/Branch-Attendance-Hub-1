@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development tsx ./src/index.ts",
+    "dev": "cross-env NODE_ENV=development tsx ./src/index.ts",
     "build": "tsx ./build.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -25,6 +25,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "catalog:",
     "@types/pg": "^8.18.0",
+    "cross-env": "^10.1.0",
     "esbuild": "^0.27.3",
     "tsx": "catalog:"
   }

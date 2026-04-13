@@ -1,9 +1,8 @@
 import { Router } from "express";
-import { db, DB_URL_PATH } from "@workspace/db";
+import { db, switchDatabase } from "@workspace/db";
 import { systemSettings, holidays } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import pg from "pg";
-import { writeFileSync } from "fs";
 const { Client } = pg;
 
 const router = Router();
@@ -102,28 +101,13 @@ router.post("/db/apply", async (req, res) => {
     res.status(400).json({ success: false, message: "Host, database name and username are required." });
     return;
   }
-  const client = new Client({
-    host, port: Number(port) || 5432, database, user, password,
-    connectionTimeoutMillis: 5000,
-    ssl: false,
-  });
-  try {
-    await client.connect();
-    await client.end();
-  } catch (e: any) {
-    try { await client.end(); } catch {}
-    res.status(400).json({ success: false, message: `Connection failed: ${e.message || "Cannot connect"}` });
-    return;
-  }
   const connStr = `postgresql://${user}:${encodeURIComponent(password)}@${host}:${Number(port) || 5432}/${database}`;
   try {
-    writeFileSync(DB_URL_PATH, connStr, "utf-8");
+    await switchDatabase(connStr);
+    res.json({ success: true, message: `Connected to ${database}@${host} — database switched successfully.` });
   } catch (e: any) {
-    res.status(500).json({ success: false, message: `Could not save DB URL: ${e.message}` });
-    return;
+    res.status(400).json({ success: false, message: `Connection failed: ${e.message || "Cannot connect to database"}` });
   }
-  res.json({ success: true, message: "Database connection applied. Server is restarting..." });
-  setTimeout(() => process.exit(0), 300);
 });
 
 export default router;

@@ -170,11 +170,14 @@ export default function Settings() {
       const d = await r.json();
       if (d.success) {
         localStorage.setItem("db_settings", JSON.stringify(dbSettings));
-        localStorage.setItem("db_status", JSON.stringify({ success: true, message: "Applied & connected" }));
-        setDbTestResult({ success: true, message: "Applied & connected" });
-        setDbApplyResult({ success: true, message: "Server is restarting with new database..." });
+        localStorage.setItem("db_status", JSON.stringify({ success: true, message: d.message }));
+        setDbTestResult({ success: true, message: d.message });
+        setDbApplyResult({ success: true, message: d.message });
       } else {
-        setDbApplyResult({ success: false, message: d.message || "Failed to apply." });
+        const errStatus = { success: false, message: d.message || "Failed to apply." };
+        localStorage.setItem("db_status", JSON.stringify(errStatus));
+        setDbTestResult(errStatus);
+        setDbApplyResult(errStatus);
       }
     } catch {
       setDbApplyResult({ success: false, message: "Could not reach server." });
@@ -817,8 +820,8 @@ export default function Settings() {
                   title="Tests connection, saves to server and restarts to apply"
                 >
                   {dbApplying
-                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" />Applying...</>
-                    : <><Database className="w-3.5 h-3.5" />Apply & Restart</>}
+                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" />Connecting...</>
+                    : <><Database className="w-3.5 h-3.5" />Apply Database</>}
                 </Button>
               </div>
             </div>
