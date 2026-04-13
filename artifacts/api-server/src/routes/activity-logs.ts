@@ -1,13 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { activityLogs, systemUsers } from "@workspace/db/schema";
+import { activityLogs } from "@workspace/db/schema";
 import { desc, and, gte, lte, eq, ilike, or } from "drizzle-orm";
-import { authMiddleware } from "../lib/auth.js";
-import { logActivity } from "../lib/activity-logger.js";
 
 const router = Router();
 
-router.get("/", authMiddleware, async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const {
       limit = "100",
@@ -66,37 +64,7 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-router.post("/", authMiddleware, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { action, module, description } = req.body;
-    if (!action) {
-      res.status(400).json({ message: "action required" });
-      return;
-    }
-    const [user] = await db.select().from(systemUsers).where(eq(systemUsers.id, userId));
-    if (!user) {
-      res.status(404).json({ message: "User not found" });
-      return;
-    }
-    await logActivity({
-      userId: user.id,
-      username: user.username,
-      fullName: user.fullName,
-      action,
-      module: module || null,
-      description: description || null,
-      status: "success",
-      req,
-    });
-    res.json({ success: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-router.delete("/clear", authMiddleware, async (req, res) => {
+router.delete("/clear", async (req, res) => {
   try {
     const { before } = req.query as { before?: string };
     if (before) {
