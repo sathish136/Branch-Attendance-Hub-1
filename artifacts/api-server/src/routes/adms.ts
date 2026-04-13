@@ -32,7 +32,7 @@ async function findOrNoteDevice(sn: string, ip: string): Promise<typeof biometri
       serialNumber: sn,
       model: "ZKTeco",
       ipAddress: ip || "",
-      port: 4370,
+      port: 3333,
       branchId: null,
       pushMethod: "zkpush",
       status: "online",
