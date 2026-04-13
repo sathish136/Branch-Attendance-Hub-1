@@ -33,13 +33,17 @@ APP_HOST = "0.0.0.0"
 APP_PORT = int(os.environ.get("ADMS_PORT", 3333))
 DB_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "push.db")
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8080").rstrip("/")
-
 _REPLIT_DEV_DOMAIN = os.environ.get("REPLIT_DEV_DOMAIN", "")
+_API_PORT          = os.environ.get("API_PORT", "8080")
+
 if _REPLIT_DEV_DOMAIN:
     PUBLIC_BASE_URL = f"https://{APP_PORT}-{_REPLIT_DEV_DOMAIN}"
+    _default_api    = f"https://{_REPLIT_DEV_DOMAIN}"
 else:
     PUBLIC_BASE_URL = f"http://localhost:{APP_PORT}"
+    _default_api    = f"http://localhost:{_API_PORT}"
+
+API_BASE_URL = os.environ.get("API_BASE_URL", _default_api).rstrip("/")
 
 app = Flask(__name__)
 
