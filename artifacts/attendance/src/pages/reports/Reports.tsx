@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useGetAttendanceReport, useGetMonthlyReport, useGetOvertimeReport, useListBranches } from "@workspace/api-client-react";
-import { PageHeader, Card, Button, Input, Select, Label } from "@/components/ui";
+import { PageHeader, Card, Input, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { FileDown, Users, Clock, Calendar } from "lucide-react";
+import { FileDown, Users, Clock, Calendar, FileText, Sheet } from "lucide-react";
 
 type Tab = "attendance" | "monthly" | "overtime";
 
@@ -17,6 +17,49 @@ const STATUS_COLORS: Record<string, string> = {
 
 function getMonthName(m: number) {
   return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1];
+}
+
+function ExportDropdown() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        title="Export"
+        className="flex items-center justify-center w-9 h-9 border border-border rounded-lg bg-background hover:bg-muted transition-colors"
+      >
+        <FileDown className="w-4 h-4 text-muted-foreground" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 w-40 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
+          <button
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2.5 w-full px-3 py-2.5 text-xs font-medium hover:bg-muted transition-colors"
+          >
+            <FileText className="w-3.5 h-3.5 text-red-500" />
+            Export PDF
+          </button>
+          <button
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2.5 w-full px-3 py-2.5 text-xs font-medium hover:bg-muted transition-colors border-t border-border"
+          >
+            <Sheet className="w-3.5 h-3.5 text-green-600" />
+            Export Excel
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Reports() {
@@ -60,20 +103,19 @@ function AttendanceReport() {
   const [endDate, setEndDate] = useState(now.toISOString().split("T")[0]);
   const [branchId, setBranchId] = useState("");
   const [status, setStatus] = useState("");
-  const [applied, setApplied] = useState({ startDate, endDate, branchId, status });
 
   const { data: branches } = useListBranches();
   const { data, isLoading } = useGetAttendanceReport({
-    startDate: applied.startDate,
-    endDate: applied.endDate,
-    ...(applied.branchId ? { branchId: Number(applied.branchId) } : {}),
-    ...(applied.status ? { status: applied.status } : {}),
+    startDate,
+    endDate,
+    ...(branchId ? { branchId: Number(branchId) } : {}),
+    ...(status ? { status } : {}),
   });
 
   return (
     <div className="space-y-4">
       <Card className="p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 items-end">
+        <div className="flex flex-wrap items-end gap-3">
           <div>
             <Label className="text-xs">Start Date</Label>
             <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
@@ -100,10 +142,9 @@ function AttendanceReport() {
               <option value="leave">Leave</option>
             </Select>
           </div>
-          <Button onClick={() => setApplied({ startDate, endDate, branchId, status })}>Apply</Button>
-          <Button variant="outline" className="flex items-center gap-2">
-            <FileDown className="w-4 h-4" />Export
-          </Button>
+          <div className="ml-auto self-end">
+            <ExportDropdown />
+          </div>
         </div>
       </Card>
 
@@ -158,7 +199,7 @@ function AttendanceReport() {
                   </tr>
                 ))}
                 {!data?.records?.length && (
-                  <tr><td colSpan={10} className="text-center py-8 text-muted-foreground">No records found. Apply filters and click Apply.</td></tr>
+                  <tr><td colSpan={10} className="text-center py-8 text-muted-foreground">No records found for the selected filters.</td></tr>
                 )}
               </tbody>
             </table>
@@ -174,18 +215,17 @@ function MonthlyReport() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [branchId, setBranchId] = useState("");
-  const [applied, setApplied] = useState({ month, year, branchId });
   const { data: branches } = useListBranches();
   const { data, isLoading } = useGetMonthlyReport({
-    month: applied.month,
-    year: applied.year,
-    ...(applied.branchId ? { branchId: Number(applied.branchId) } : {}),
+    month,
+    year,
+    ...(branchId ? { branchId: Number(branchId) } : {}),
   });
 
   return (
     <div className="space-y-4">
       <Card className="p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+        <div className="flex flex-wrap items-end gap-3">
           <div>
             <Label className="text-xs">Month</Label>
             <Select value={month} onChange={e => setMonth(Number(e.target.value))}>
@@ -205,9 +245,8 @@ function MonthlyReport() {
               {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
-          <div className="flex gap-2">
-            <Button onClick={() => setApplied({ month, year, branchId })}>Generate</Button>
-            <Button variant="outline" className="flex items-center gap-2"><FileDown className="w-4 h-4" /></Button>
+          <div className="ml-auto self-end">
+            <ExportDropdown />
           </div>
         </div>
       </Card>
@@ -257,7 +296,7 @@ function MonthlyReport() {
                   </tr>
                 ))}
                 {!data?.employees?.length && (
-                  <tr><td colSpan={13} className="text-center py-8 text-muted-foreground">Click Generate to load the monthly report.</td></tr>
+                  <tr><td colSpan={13} className="text-center py-8 text-muted-foreground">No records found for the selected period.</td></tr>
                 )}
               </tbody>
             </table>
@@ -273,18 +312,17 @@ function OvertimeReport() {
   const [startDate, setStartDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(now.toISOString().split("T")[0]);
   const [branchId, setBranchId] = useState("");
-  const [applied, setApplied] = useState({ startDate, endDate, branchId });
   const { data: branches } = useListBranches();
   const { data, isLoading } = useGetOvertimeReport({
-    startDate: applied.startDate,
-    endDate: applied.endDate,
-    ...(applied.branchId ? { branchId: Number(applied.branchId) } : {}),
+    startDate,
+    endDate,
+    ...(branchId ? { branchId: Number(branchId) } : {}),
   });
 
   return (
     <div className="space-y-4">
       <Card className="p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+        <div className="flex flex-wrap items-end gap-3">
           <div>
             <Label className="text-xs">Start Date</Label>
             <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
@@ -300,9 +338,8 @@ function OvertimeReport() {
               {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
-          <div className="flex gap-2">
-            <Button onClick={() => setApplied({ startDate, endDate, branchId })}>Apply</Button>
-            <Button variant="outline" className="flex items-center gap-2"><FileDown className="w-4 h-4" /></Button>
+          <div className="ml-auto self-end">
+            <ExportDropdown />
           </div>
         </div>
       </Card>
