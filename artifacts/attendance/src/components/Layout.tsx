@@ -21,11 +21,94 @@ import {
   Search,
   X,
   AlertCircle,
-  CheckCircle2,
-  Info,
+  WifiOff,
+  UserX,
+  AlarmClock,
   MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const BASE_URL_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
+function _apiUrl(path: string) { return `${BASE_URL_PREFIX}/api${path}`; }
+
+type NotifItem = {
+  id: string;
+  icon: React.ElementType;
+  color: string;
+  bg: string;
+  title: string;
+  desc: string;
+  href?: string;
+};
+
+function useNotifications() {
+  const [items, setItems] = useState<NotifItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      const notifs: NotifItem[] = [];
+      try {
+        const [devRes, todayRes] = await Promise.allSettled([
+          fetch(_apiUrl("/biometric")).then(r => r.json()),
+          fetch(_apiUrl("/attendance/today")).then(r => r.json()),
+        ]);
+
+        if (devRes.status === "fulfilled") {
+          const devices: any[] = Array.isArray(devRes.value) ? devRes.value : [];
+          const offline = devices.filter(d => d.status === "offline" || d.status === "error");
+          offline.forEach(d => {
+            notifs.push({
+              id: `dev-offline-${d.id}`,
+              icon: WifiOff,
+              color: "text-red-600",
+              bg: "bg-red-50",
+              title: `${d.name} Offline`,
+              desc: `Biometric device at ${d.branchName || "unknown branch"} is offline`,
+              href: "/biometric",
+            });
+          });
+        }
+
+        if (todayRes.status === "fulfilled") {
+          const records: any[] = todayRes.value?.records || [];
+          const absent = records.filter(r => r.status === "absent").length;
+          const late = records.filter(r => r.status === "late").length;
+          if (absent > 0) {
+            notifs.push({
+              id: "absent-today",
+              icon: UserX,
+              color: "text-orange-600",
+              bg: "bg-orange-50",
+              title: `${absent} Absent Today`,
+              desc: "Employees haven't checked in yet",
+              href: "/attendance/today",
+            });
+          }
+          if (late > 0) {
+            notifs.push({
+              id: "late-today",
+              icon: AlarmClock,
+              color: "text-amber-600",
+              bg: "bg-amber-50",
+              title: `${late} Late Arrival${late > 1 ? "s" : ""}`,
+              desc: "Checked in after shift start time",
+              href: "/attendance/today",
+            });
+          }
+        }
+      } catch { /* silent */ }
+      if (!cancelled) { setItems(notifs); setLoading(false); }
+    }
+    load();
+    const interval = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  return { items, loading };
+}
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -91,6 +174,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const { items: notifItems } = useNotifications();
   const notifRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -412,7 +496,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 className="relative p-2 text-muted-foreground hover:bg-muted rounded-lg transition-colors"
               >
                 <Bell className="w-[18px] h-[18px]" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-card animate-pulse" />
+                {notifItems.length > 0 && (
+                  <span className="absolute top-1 right-1 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 border-2 border-card">
+                    {notifItems.length > 9 ? "9+" : notifItems.length}
+                  </span>
+                )}
               </button>
 
               {/* Notification dropdown */}
@@ -420,16 +508,22 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                     <span className="font-semibold text-[13px]">Notifications</span>
-                    <span className="text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5 font-bold">3</span>
+                    {notifItems.length > 0 && (
+                      <span className="text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5 font-bold">{notifItems.length}</span>
+                    )}
                   </div>
                   <div className="divide-y divide-border max-h-72 overflow-y-auto">
-                    {[
-                      { icon: AlertCircle, color: "text-red-500", bg: "bg-red-50", title: "12 Absent Today", desc: "Employees haven't checked in yet", time: "Just now" },
-                      { icon: AlertCircle, color: "text-orange-500", bg: "bg-orange-50", title: "5 Late Arrivals", desc: "Checked in after shift start time", time: "10 min ago" },
-                      { icon: CheckCircle2, color: "text-green-500", bg: "bg-green-50", title: "Payroll Processed", desc: "March 2026 payroll is ready", time: "1 hr ago" },
-                      { icon: Info, color: "text-blue-500", bg: "bg-blue-50", title: "New Employee Added", desc: "Kamal Perera joined Head Office", time: "2 hrs ago" },
-                    ].map((n, i) => (
-                      <div key={i} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/50 cursor-pointer transition-colors">
+                    {notifItems.length === 0 ? (
+                      <div className="px-4 py-8 text-center">
+                        <Bell className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
+                        <p className="text-[12px] text-muted-foreground">All clear — no alerts right now</p>
+                      </div>
+                    ) : notifItems.map(n => (
+                      <div
+                        key={n.id}
+                        onClick={() => { if (n.href) { setLocation(n.href); setNotifOpen(false); } }}
+                        className={cn("flex items-start gap-3 px-4 py-3 hover:bg-muted/50 transition-colors", n.href && "cursor-pointer")}
+                      >
                         <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5", n.bg)}>
                           <n.icon className={cn("w-4 h-4", n.color)} />
                         </div>
@@ -437,13 +531,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                           <p className="text-[12px] font-semibold text-foreground truncate">{n.title}</p>
                           <p className="text-[11px] text-muted-foreground truncate">{n.desc}</p>
                         </div>
-                        <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">{n.time}</span>
                       </div>
                     ))}
                   </div>
                   <div className="px-4 py-2.5 border-t border-border">
-                    <button className="w-full text-[12px] text-primary font-medium hover:underline text-center">
-                      View all notifications
+                    <button
+                      onClick={() => { setLocation("/activity-logs"); setNotifOpen(false); }}
+                      className="w-full text-[12px] text-primary font-medium hover:underline text-center"
+                    >
+                      View activity logs
                     </button>
                   </div>
                 </div>

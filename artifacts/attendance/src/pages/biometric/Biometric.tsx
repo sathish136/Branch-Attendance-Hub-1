@@ -279,7 +279,11 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function apiUrl(path: string) { return `${BASE}/api${path}`; }
 
 function LogsTab() {
-  const { data, isLoading, refetch } = useListBiometricLogs({});
+  const [selectedDeviceId, setSelectedDeviceId] = useState<number | undefined>(undefined);
+  const { data: devices } = useListBiometricDevices();
+  const { data, isLoading, refetch } = useListBiometricLogs(
+    selectedDeviceId !== undefined ? { deviceId: selectedDeviceId } : {}
+  );
   const [clearing, setClearing] = useState(false);
 
   async function handleClearLogs() {
@@ -293,14 +297,34 @@ function LogsTab() {
     }
   }
 
-  const logCount = data?.logs?.length ?? 0;
+  const logCount = data?.total ?? data?.logs?.length ?? 0;
+  const deviceList = Array.isArray(devices) ? devices : [];
 
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
-        <span className="text-xs font-semibold text-muted-foreground">
-          {logCount} {logCount === 1 ? "log" : "logs"}
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-border bg-muted/30">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-semibold text-muted-foreground">
+            {logCount} {logCount === 1 ? "log" : "logs"}
+          </span>
+          {deviceList.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs text-muted-foreground">Device:</label>
+              <select
+                value={selectedDeviceId ?? ""}
+                onChange={e => setSelectedDeviceId(e.target.value === "" ? undefined : Number(e.target.value))}
+                className="text-xs border border-border rounded-md px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">All Devices</option>
+                {deviceList.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}{d.status !== "online" ? ` (${d.status})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
         <button
           onClick={handleClearLogs}
           disabled={clearing || logCount === 0}
