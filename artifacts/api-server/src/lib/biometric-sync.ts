@@ -47,7 +47,7 @@ async function generateNextEmployeeId(branchId: number): Promise<string> {
   return `${prefix}${String(maxNum + 1).padStart(3, "0")}`;
 }
 
-export async function autoCreateEmployees(deviceId: number, branchId: number): Promise<number> {
+export async function autoCreateEmployees(deviceId: number, branchId: number | null): Promise<number> {
   const logs = await db.select({ biometricId: biometricLogs.biometricId })
     .from(biometricLogs)
     .where(and(eq(biometricLogs.deviceId, deviceId), isNull(biometricLogs.employeeId)));
@@ -60,27 +60,32 @@ export async function autoCreateEmployees(deviceId: number, branchId: number): P
 
   for (const bioId of uniqueIds) {
     try {
-      // Look up employee by biometricId AND branchId — same PIN can exist in different branches
-      const [existing] = await db.select().from(employees)
-        .where(and(eq(employees.biometricId, bioId), eq(employees.branchId, branchId)));
+      // No branch assigned — cannot link or create employees without knowing which branch.
+      // Logs will stay pending until the device is assigned a branch, then Reprocess Pending can resolve them.
+      if (!branchId) continue;
+
+      // Look up employee by (biometricId + branchId) — same PIN in different branches = different employees
+      const existing = await db.select().from(employees)
+        .where(and(eq(employees.biometricId, bioId), eq(employees.branchId, branchId)))
+        .then(r => r[0]);
+
       if (existing) {
         await db.update(biometricLogs).set({ employeeId: existing.id })
-          .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
+          .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId), isNull(biometricLogs.employeeId)));
         continue;
       }
 
       const empId = await generateNextEmployeeId(branchId);
 
-      // Double-check: guard against concurrent inserts for same (biometricId, branchId)
       const [existingAfter] = await db.select().from(employees)
         .where(and(eq(employees.biometricId, bioId), eq(employees.branchId, branchId)));
       if (existingAfter) {
         await db.update(biometricLogs).set({ employeeId: existingAfter.id })
-          .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
+          .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId), isNull(biometricLogs.employeeId)));
         continue;
       }
 
-      // Insert employee; unique index is now (biometric_id, branch_id) so same PIN in different branches is allowed
+      // Insert employee; unique index is (biometric_id, branch_id) so same PIN in different branches is allowed
       let newEmpId: number;
       try {
         const result = await db.execute(
@@ -95,7 +100,7 @@ export async function autoCreateEmployees(deviceId: number, branchId: number): P
             .where(and(eq(employees.biometricId, bioId), eq(employees.branchId, branchId)));
           if (conflicting) {
             await db.update(biometricLogs).set({ employeeId: conflicting.id })
-              .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
+              .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId), isNull(biometricLogs.employeeId)));
           }
           continue;
         }
@@ -105,13 +110,13 @@ export async function autoCreateEmployees(deviceId: number, branchId: number): P
           .where(and(eq(employees.biometricId, bioId), eq(employees.branchId, branchId)));
         if (conflicting) {
           await db.update(biometricLogs).set({ employeeId: conflicting.id })
-            .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
+            .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId), isNull(biometricLogs.employeeId)));
         }
         continue;
       }
 
       await db.update(biometricLogs).set({ employeeId: newEmpId })
-        .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId)));
+        .where(and(eq(biometricLogs.deviceId, deviceId), eq(biometricLogs.biometricId, bioId), isNull(biometricLogs.employeeId)));
       created++;
       console.log(`[BioSync] Auto-created employee ${empId} (PIN=${bioId}) for branch ${branchId}`);
     } catch (err) {
@@ -205,7 +210,7 @@ export async function processAttendance(deviceId: number): Promise<{ created: nu
   return { created, updated };
 }
 
-export async function autoSync(deviceId: number, branchId: number): Promise<void> {
+export async function autoSync(deviceId: number, branchId: number | null): Promise<void> {
   try {
     const empCreated = await autoCreateEmployees(deviceId, branchId);
     const { created, updated } = await processAttendance(deviceId);

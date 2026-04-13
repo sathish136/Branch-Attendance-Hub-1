@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { biometricDevices, biometricLogs, branches, employees, attendanceRecords } from "@workspace/db/schema";
 import { eq, and, isNull, inArray, isNotNull } from "drizzle-orm";
-import { autoCreateEmployees, autoSync } from "../lib/biometric-sync.js";
+import { autoCreateEmployees, autoSync, processAttendance } from "../lib/biometric-sync.js";
 
 const router = Router();
 
@@ -179,12 +179,11 @@ router.post("/push-logs", async (req, res) => {
         ));
       if (existing) continue;
 
-      const [emp] = await db.select({ id: employees.id }).from(employees)
-        .where(
-          dev.branchId
-            ? and(eq(employees.biometricId, pin), eq(employees.branchId, dev.branchId))
-            : eq(employees.biometricId, pin)
-        );
+      // Only match employee when device branch is known — same PIN in different branches = different people
+      const [emp] = dev.branchId
+        ? await db.select({ id: employees.id }).from(employees)
+            .where(and(eq(employees.biometricId, pin), eq(employees.branchId, dev.branchId)))
+        : [];
 
       await db.insert(biometricLogs).values({
         deviceId: dev.id,
@@ -199,8 +198,8 @@ router.post("/push-logs", async (req, res) => {
 
     res.json({ success: true, inserted });
 
-    if (inserted > 0 && dev.branchId) {
-      autoSync(dev.id, dev.branchId);
+    if (inserted > 0) {
+      autoSync(dev.id, dev.branchId ?? null);
     }
   } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Error" }); }
 });
@@ -230,6 +229,21 @@ router.post("/sync-users", async (req, res) => {
       console.log(`[BioSync] Name updated for PIN=${pin}: "${name}"`);
     }
     res.json({ success: true, updated });
+  } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Error" }); }
+});
+
+router.post("/reprocess", async (req, res) => {
+  try {
+    const allDevices = await db.select().from(biometricDevices);
+    let totalLinked = 0;
+    let totalProcessed = 0;
+    for (const dev of allDevices) {
+      const linked = await autoCreateEmployees(dev.id, dev.branchId ?? null);
+      const { created, updated } = await processAttendance(dev.id);
+      totalLinked += linked;
+      totalProcessed += created + updated;
+    }
+    res.json({ success: true, linked: totalLinked, processed: totalProcessed });
   } catch (e) { console.error(e); res.status(500).json({ success: false, message: "Error" }); }
 });
 

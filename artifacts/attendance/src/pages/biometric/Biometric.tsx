@@ -276,6 +276,7 @@ function LogsTab() {
     selectedDeviceId !== undefined ? { deviceId: selectedDeviceId } : {}
   );
   const [clearing, setClearing] = useState(false);
+  const [reprocessing, setReprocessing] = useState(false);
 
   async function handleClearLogs() {
     if (!confirm("Clear all push logs? This cannot be undone.")) return;
@@ -285,6 +286,16 @@ function LogsTab() {
       refetch();
     } finally {
       setClearing(false);
+    }
+  }
+
+  async function handleReprocess() {
+    setReprocessing(true);
+    try {
+      await fetch(apiUrl("/biometric/reprocess"), { method: "POST" });
+      refetch();
+    } finally {
+      setReprocessing(false);
     }
   }
 
@@ -316,19 +327,34 @@ function LogsTab() {
             </div>
           )}
         </div>
-        <button
-          onClick={handleClearLogs}
-          disabled={clearing || logCount === 0}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors",
-            logCount === 0
-              ? "border-border text-muted-foreground cursor-not-allowed opacity-50"
-              : "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-          )}
-        >
-          <XCircle className="w-3.5 h-3.5" />
-          {clearing ? "Clearing..." : "Clear Logs"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleReprocess}
+            disabled={reprocessing || logCount === 0}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors",
+              logCount === 0
+                ? "border-border text-muted-foreground cursor-not-allowed opacity-50"
+                : "border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100"
+            )}
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", reprocessing && "animate-spin")} />
+            {reprocessing ? "Processing..." : "Reprocess Pending"}
+          </button>
+          <button
+            onClick={handleClearLogs}
+            disabled={clearing || logCount === 0}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors",
+              logCount === 0
+                ? "border-border text-muted-foreground cursor-not-allowed opacity-50"
+                : "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+            )}
+          >
+            <XCircle className="w-3.5 h-3.5" />
+            {clearing ? "Clearing..." : "Clear Logs"}
+          </button>
+        </div>
       </div>
       {isLoading ? (
         <div className="p-8 text-center text-sm text-muted-foreground">Loading logs...</div>
@@ -356,9 +382,16 @@ function LogsTab() {
                     )}>{l.punchType.toUpperCase()}</span>
                   </td>
                   <td className="px-3 py-2">
-                    <span className={l.processed ? "text-green-600" : "text-amber-600"}>
-                      {l.processed ? "✓ Processed" : "Pending"}
-                    </span>
+                    {l.processed ? (
+                      <span className="text-green-600">✓ Processed</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-amber-600" title={!l.employeeId || l.employeeName === "Unknown" ? "Device has no branch assigned — assign a branch then click Reprocess Pending" : "Waiting to be processed"}>
+                        ⏳ Pending
+                        {(!l.employeeId || l.employeeName === "Unknown") && (
+                          <span className="text-xs text-muted-foreground">(no branch)</span>
+                        )}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -177,12 +177,11 @@ router.post("/cdata", async (req: Request, res: Response) => {
           ));
         if (existing.length > 0) continue;
 
-        const [emp] = await db.select().from(employees)
-          .where(
-            dev.branchId
-              ? and(eq(employees.biometricId, biometricId), eq(employees.branchId, dev.branchId))
-              : eq(employees.biometricId, biometricId)
-          );
+        // Only match employee when device branch is known — same PIN in different branches = different people
+        const [emp] = dev.branchId
+          ? await db.select().from(employees)
+              .where(and(eq(employees.biometricId, biometricId), eq(employees.branchId, dev.branchId)))
+          : [];
 
         await db.insert(biometricLogs).values({
           deviceId: dev.id,
@@ -201,8 +200,8 @@ router.post("/cdata", async (req: Request, res: Response) => {
     console.log(`[ADMS] ATTLOG: saved ${count} records for SN=${sn}`);
     res.send(`OK: ${count}`);
 
-    if (count > 0 && dev.branchId) {
-      autoSync(dev.id, dev.branchId);
+    if (count > 0) {
+      autoSync(dev.id, dev.branchId ?? null);
     }
     return;
   }
