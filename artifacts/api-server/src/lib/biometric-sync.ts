@@ -1,6 +1,6 @@
 import { db } from "@workspace/db";
 import { biometricDevices, biometricLogs, employees, attendanceRecords, branches } from "@workspace/db/schema";
-import { eq, and, isNull, isNotNull, inArray } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, inArray, sql } from "drizzle-orm";
 
 function calcHours(t1: string | null | undefined, t2: string | null | undefined): number | null {
   if (!t1 || !t2) return null;
@@ -38,8 +38,10 @@ async function generateNextEmployeeId(branchId: number): Promise<string> {
   for (const e of existing) {
     const id = e.employeeId.toUpperCase();
     if (id.startsWith(prefix)) {
-      const n = parseInt(id.slice(prefix.length), 10);
-      if (!isNaN(n) && n > maxNum) maxNum = n;
+      // Strip prefix and any leading dash/hyphen before parsing number
+      const numStr = id.slice(prefix.length).replace(/^[-_]/, "");
+      const n = parseInt(numStr, 10);
+      if (!isNaN(n) && n > 0 && n > maxNum) maxNum = n;
     }
   }
   return `${prefix}${String(maxNum + 1).padStart(3, "0")}`;

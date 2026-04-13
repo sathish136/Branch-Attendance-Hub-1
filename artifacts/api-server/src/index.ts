@@ -38,6 +38,25 @@ async function ensureTables() {
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `);
+
+    // Remove duplicate biometric_id employees — keep the one with lowest id (oldest)
+    await client.query(`
+      DELETE FROM employees
+      WHERE id NOT IN (
+        SELECT MIN(id) FROM employees
+        WHERE biometric_id IS NOT NULL
+        GROUP BY biometric_id
+      )
+      AND biometric_id IS NOT NULL;
+    `);
+
+    // Add unique partial index on biometric_id (prevents race-condition duplicates)
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS employees_biometric_id_unique
+      ON employees (biometric_id)
+      WHERE biometric_id IS NOT NULL;
+    `);
+
     console.log("[DB] Biometric tables ensured.");
   } catch (err) {
     console.error("[DB] Could not ensure biometric tables:", err);
