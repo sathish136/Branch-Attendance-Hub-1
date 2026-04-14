@@ -1,204 +1,318 @@
-import { useState, useMemo } from "react";
-import { Search, MapPin, RefreshCw, Users, CheckCircle2, XCircle, Clock, CalendarOff, Fingerprint, PenLine } from "lucide-react";
-import { PageHeader, Card, Table, Th, Tr, Td, Badge, Input, Select } from "@/components/ui";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import {
+  Search, MapPin, RefreshCw, Users, CheckCircle2, XCircle,
+  Fingerprint, PenLine, Filter
+} from "lucide-react";
+import { cn, formatTime } from "@/lib/utils";
 import { useTodayAttendance } from "@/hooks/use-attendance";
 import { useBranches } from "@/hooks/use-core";
-import { formatTime } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetTodayAttendanceQueryKey } from "@workspace/api-client-react";
 
-function StatCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: number; color: string }) {
+/* ── Attendance ring ─────────────────────────────────────── */
+function AttendanceRing({ pct }: { pct: number }) {
+  const r = 46, circ = 2 * Math.PI * r;
+  const dash = (pct / 100) * circ;
+  const color = pct >= 80 ? "#10b981" : pct >= 60 ? "#f59e0b" : "#ef4444";
   return (
-    <Card className="p-4 flex items-center gap-4">
-      <div className={`p-2.5 rounded-xl ${color}`}>
-        <Icon className="w-5 h-5 text-white" />
+    <div className="relative w-[110px] h-[110px] shrink-0">
+      <svg width="110" height="110" className="-rotate-90">
+        <circle cx="55" cy="55" r={r} fill="none" stroke="#e2e8f0" strokeWidth="9" />
+        <circle cx="55" cy="55" r={r} fill="none" stroke={color} strokeWidth="9"
+          strokeDasharray={`${dash} ${circ - dash}`} strokeLinecap="round"
+          style={{ transition: "stroke-dasharray 0.8s ease" }} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-2xl font-bold text-foreground leading-none">{pct}%</span>
+        <span className="text-[10px] text-muted-foreground mt-0.5">Today</span>
       </div>
-      <div>
-        <div className="text-2xl font-bold text-foreground leading-none">{value}</div>
-        <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
-      </div>
-    </Card>
+    </div>
   );
 }
 
+/* ── Stat pill row ───────────────────────────────────────── */
+function StatPill({ label, val, dot }: { label: string; val: number; dot: string }) {
+  return (
+    <div className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
+      <div className="flex items-center gap-2">
+        <span className={cn("w-2 h-2 rounded-full shrink-0", dot)} />
+        <span className="text-xs text-muted-foreground">{label}</span>
+      </div>
+      <span className="text-xs font-bold text-foreground">{val}</span>
+    </div>
+  );
+}
+
+/* ── KPI card ────────────────────────────────────────────── */
+function KPICard({ icon: Icon, label, value, color, bg, border }: {
+  icon: any; label: string; value: number | string;
+  color: string; bg: string; border: string;
+}) {
+  return (
+    <div className={cn("bg-card rounded-xl border p-4 flex flex-col gap-3", border)}>
+      <div className={cn("p-2 rounded-lg w-fit", bg)}>
+        <Icon className={cn("w-4 h-4", color)} />
+      </div>
+      <div>
+        <p className={cn("text-2xl font-bold leading-none", color)}>{value}</p>
+        <p className="text-xs text-muted-foreground mt-1">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ── Status config ───────────────────────────────────────── */
+const STATUS: Record<string, { label: string; bg: string; text: string; dot: string }> = {
+  present:  { label: "Present",  bg: "bg-emerald-100", text: "text-emerald-700", dot: "bg-emerald-500" },
+  late:     { label: "Late",     bg: "bg-amber-100",   text: "text-amber-700",   dot: "bg-amber-500"  },
+  absent:   { label: "Absent",   bg: "bg-red-100",     text: "text-red-700",     dot: "bg-red-500"    },
+  half_day: { label: "Half Day", bg: "bg-yellow-100",  text: "text-yellow-700",  dot: "bg-yellow-500" },
+  leave:    { label: "On Leave", bg: "bg-blue-100",    text: "text-blue-700",    dot: "bg-blue-500"   },
+};
+
+function fmtHours(h: any) {
+  if (!h) return null;
+  const n = Number(h);
+  const hrs = Math.floor(n);
+  const mins = Math.round((n % 1) * 60);
+  return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+}
+
+/* ═══════════════════════════════════════════════════════════ */
 export default function TodayAttendance() {
-  const [branchId, setBranchId] = useState("all");
-  const [search, setSearch] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [branchId, setBranchId]   = useState("all");
+  const [search,   setSearch]     = useState("");
+  const [lastUpdated, setLastUpdated] = useState(new Date());
   const queryClient = useQueryClient();
 
   const params = branchId !== "all" ? { branchId: Number(branchId) } : undefined;
   const { data, isLoading } = useTodayAttendance(params);
-  const { data: branchesData } = useBranches();
+  const { data: branchesRaw } = useBranches();
+  const branches: any[] = useMemo(() => (branchesRaw as any[]) || [], [branchesRaw]);
 
-  const branches = useMemo(() => {
-    const all: any[] = branchesData || [];
-    return all;
-  }, [branchesData]);
+  const allRecords: any[] = data?.records || [];
 
-  const records: any[] = useMemo(() => {
-    const raw = data?.records || [];
-    if (!search.trim()) return raw;
+  const records = useMemo(() => {
+    if (!search.trim()) return allRecords;
     const q = search.toLowerCase();
-    return raw.filter((r: any) =>
+    return allRecords.filter((r: any) =>
       r.employeeName?.toLowerCase().includes(q) ||
       r.employeeCode?.toLowerCase().includes(q) ||
       r.branchName?.toLowerCase().includes(q)
     );
-  }, [data?.records, search]);
+  }, [allRecords, search]);
 
-  function handleRefresh() {
+  const refresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: [getGetTodayAttendanceQueryKey()[0]] });
-    setRefreshKey(k => k + 1);
-  }
+    setLastUpdated(new Date());
+  }, [queryClient]);
 
-  const today = data?.date
-    ? new Date(data.date).toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
-    : new Date().toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  useEffect(() => {
+    const t = setInterval(refresh, 60_000);
+    return () => clearInterval(t);
+  }, [refresh]);
 
-  const statusConfig: Record<string, { label: string; variant: "success" | "danger" | "warning" | "neutral" | "info" }> = {
-    present:  { label: "Present",  variant: "success" },
-    absent:   { label: "Absent",   variant: "danger" },
-    late:     { label: "Late",     variant: "warning" },
-    half_day: { label: "Half Day", variant: "neutral" },
-    leave:    { label: "On Leave", variant: "info" },
-  };
+  const total   = data?.totalEmployees ?? 0;
+  const present = data?.present  ?? 0;
+  const absent  = data?.absent   ?? 0;
+  const late    = data?.late     ?? 0;
+  const onLeave = data?.onLeave  ?? 0;
+  const attPct  = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
+
+  const dateStr = data?.date
+    ? new Date(data.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Today's Attendance"
-        description={today}
-        action={
-          <button
-            onClick={handleRefresh}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm text-muted-foreground hover:bg-muted transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
-        }
-      />
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatCard icon={Users}        label="Total"    value={data?.totalEmployees ?? 0} color="bg-slate-500" />
-        <StatCard icon={CheckCircle2} label="Present"  value={data?.present ?? 0}        color="bg-emerald-500" />
-        <StatCard icon={XCircle}      label="Absent"   value={data?.absent ?? 0}          color="bg-red-500" />
-        <StatCard icon={Clock}        label="Late"     value={data?.late ?? 0}            color="bg-amber-500" />
-        <StatCard icon={CalendarOff}  label="Half Day" value={data?.halfDay ?? 0}         color="bg-orange-500" />
-        <StatCard icon={CalendarOff}  label="On Leave" value={data?.onLeave ?? 0}         color="bg-blue-500" />
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Today's Attendance</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{dateStr}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-right hidden sm:block">
+            <p className="text-xs text-muted-foreground">Last updated</p>
+            <p className="text-xs font-medium text-foreground">
+              {lastUpdated.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </p>
+          </div>
+          <button
+            onClick={refresh}
+            disabled={isLoading}
+            className="p-2 rounded-lg border border-border hover:bg-muted transition-colors"
+          >
+            <RefreshCw className={cn("w-4 h-4 text-muted-foreground", isLoading && "animate-spin")} />
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <Card className="p-4 flex flex-col md:flex-row gap-3 items-center bg-white/50">
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by name, ID or branch..."
-            className="pl-9"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+      {/* KPI row — 3 cards only */}
+      <div className="grid grid-cols-3 gap-3">
+        <KPICard icon={Users}        label="Total Staff" value={total}   color="text-slate-700"   bg="bg-slate-100"  border="border-slate-200" />
+        <KPICard icon={CheckCircle2} label="Present"     value={present} color="text-emerald-600" bg="bg-emerald-50" border="border-emerald-100" />
+        <KPICard icon={XCircle}      label="Absent"      value={absent}  color="text-red-600"     bg="bg-red-50"     border="border-red-100" />
+      </div>
+
+      {/* Presence rate + filters — single column */}
+      <div className="flex flex-col gap-4">
+
+        {/* Attendance ring panel */}
+        <div className="bg-card rounded-xl border border-border p-5 flex items-center gap-6">
+          <AttendanceRing pct={attPct} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground mb-3">Presence Rate</p>
+            <StatPill label="Present"  val={present} dot="bg-emerald-500" />
+            <StatPill label="Late"     val={late}    dot="bg-amber-500" />
+            <StatPill label="On Leave" val={onLeave} dot="bg-blue-500" />
+            <StatPill label="Absent"   val={absent}  dot="bg-red-500" />
+          </div>
         </div>
-        <Select
-          value={branchId}
-          onChange={e => setBranchId(e.target.value)}
-          className="w-full md:w-[220px]"
-        >
-          <option value="all">All Branches</option>
-          {branches.map((b: any) => (
-            <option key={b.id} value={b.id}>{b.name}</option>
-          ))}
-        </Select>
-      </Card>
+
+        {/* Search + branch filter panel */}
+        <div className="bg-card rounded-xl border border-border p-5 flex flex-col gap-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Filter className="w-4 h-4 text-muted-foreground" /> Filter Records
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search by name, ID or branch…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <select
+            value={branchId}
+            onChange={e => setBranchId(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="all">All Branches</option>
+            {branches.map((b: any) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Showing <strong className="text-foreground">{records.length}</strong> of <strong className="text-foreground">{total}</strong> employee{total !== 1 ? "s" : ""}
+          </p>
+        </div>
+      </div>
 
       {/* Table */}
-      <Card className="overflow-hidden">
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="px-5 py-4 border-b border-border">
+          <h2 className="font-semibold text-base text-foreground">Employee Records</h2>
+          <p className="text-xs text-muted-foreground">Tap any row to see details — auto-refreshes every minute</p>
+        </div>
+
         {isLoading ? (
-          <div className="p-12 text-center text-muted-foreground animate-pulse">Loading records...</div>
+          <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
+            <RefreshCw className="w-4 h-4 animate-spin" /> Loading records…
+          </div>
         ) : records.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">
-            <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <div className="font-medium">No records found</div>
-            <div className="text-sm mt-1">Try adjusting your search or branch filter.</div>
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+            <Users className="w-10 h-10 opacity-20" />
+            <p className="text-sm font-medium">No records found</p>
+            <p className="text-xs">Try adjusting the search or branch filter.</p>
           </div>
         ) : (
-          <Table>
-            <thead>
-              <Tr>
-                <Th>Employee</Th>
-                <Th>Branch</Th>
-                <Th>Status</Th>
-                <Th>In Time</Th>
-                <Th>Out Time</Th>
-                <Th>Work Hours</Th>
-                <Th>Source</Th>
-              </Tr>
-            </thead>
-            <tbody>
-              {records.map((r: any) => {
-                const sc = statusConfig[r.status] ?? { label: r.status, variant: "neutral" as const };
-                const workHours = r.totalHours
-                  ? `${Math.floor(Number(r.totalHours))}h ${Math.round((Number(r.totalHours) % 1) * 60)}m`
-                  : r.workHours1
-                    ? `${Math.floor(Number(r.workHours1))}h ${Math.round((Number(r.workHours1) % 1) * 60)}m`
-                    : "—";
-                return (
-                  <Tr key={r.id}>
-                    <Td>
-                      <div className="font-semibold text-foreground">{r.employeeName}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{r.employeeCode}</div>
-                    </Td>
-                    <Td className="text-muted-foreground text-sm">
-                      <div className="flex items-center gap-1.5">
-                        <MapPin className="w-3 h-3 shrink-0" />
-                        {r.branchName || "—"}
-                      </div>
-                    </Td>
-                    <Td>
-                      <Badge variant={sc.variant}>{sc.label}</Badge>
-                    </Td>
-                    <Td className="font-mono text-sm font-medium">
-                      {r.inTime1 ? (
-                        <span className="text-emerald-700">{formatTime(r.inTime1)}</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </Td>
-                    <Td className="font-mono text-sm">
-                      {r.outTime1 ? (
-                        <span className="text-blue-700">{formatTime(r.outTime1)}</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </Td>
-                    <Td className="text-sm font-medium text-muted-foreground">{workHours}</Td>
-                    <Td>
-                      {r.source === "biometric" ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-violet-700 bg-violet-50 px-2 py-0.5 rounded-full font-medium">
-                          <Fingerprint className="w-3 h-3" /> Biometric
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-muted/50">
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Employee</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Branch</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">In</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Out</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hours</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide">Source</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {records.map((r: any) => {
+                  const sc = STATUS[r.status] ?? { label: r.status, bg: "bg-muted", text: "text-muted-foreground", dot: "bg-slate-400" };
+                  const wh = fmtHours(r.totalHours) ?? fmtHours(r.workHours1);
+                  return (
+                    <tr key={r.id} className="hover:bg-muted/30 transition-colors group">
+                      <td className="px-5 py-3">
+                        <div className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                          {r.employeeName}
+                        </div>
+                        <div className="text-xs text-muted-foreground font-mono mt-0.5">{r.employeeCode}</div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <MapPin className="w-3 h-3 shrink-0" />
+                          {r.branchName || "—"}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold", sc.bg, sc.text)}>
+                          <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", sc.dot)} />
+                          {sc.label}
                         </span>
-                      ) : r.source === "manual" ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full font-medium">
-                          <PenLine className="w-3 h-3" /> Manual
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        )}
-        {records.length > 0 && (
-          <div className="px-4 py-2 border-t text-xs text-muted-foreground bg-muted/30">
-            Showing {records.length} of {data?.totalEmployees ?? records.length} employee{records.length !== 1 ? "s" : ""}
+                      </td>
+                      <td className="px-4 py-3 text-center font-mono text-xs">
+                        {r.inTime1
+                          ? <span className="text-emerald-700 font-semibold">{formatTime(r.inTime1)}</span>
+                          : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center font-mono text-xs">
+                        {r.outTime1
+                          ? <span className="text-blue-700 font-semibold">{formatTime(r.outTime1)}</span>
+                          : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center text-xs font-medium text-muted-foreground">
+                        {wh ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {r.source === "biometric" ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-violet-700 bg-violet-50 px-2 py-0.5 rounded-full font-medium">
+                            <Fingerprint className="w-2.5 h-2.5" /> Bio
+                          </span>
+                        ) : r.source === "manual" ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full font-medium">
+                            <PenLine className="w-2.5 h-2.5" /> Manual
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
-      </Card>
+
+        {/* Footer */}
+        {!isLoading && records.length > 0 && (
+          <div className="px-5 py-3 border-t border-border bg-muted/20 flex items-center justify-between text-xs text-muted-foreground flex-wrap gap-2">
+            <div className="flex items-center gap-4 flex-wrap">
+              {[
+                { label: "Present",  val: present, color: "text-emerald-700" },
+                { label: "Late",     val: late,    color: "text-amber-700" },
+                { label: "Absent",   val: absent,  color: "text-red-700" },
+                { label: "On Leave", val: onLeave, color: "text-blue-700" },
+              ].map(({ label, val, color }) => (
+                <span key={label}>
+                  <strong className={color}>{val}</strong> {label}
+                </span>
+              ))}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              Auto-refreshes every minute
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
