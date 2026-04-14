@@ -9,7 +9,7 @@ import { useBranches } from "@/hooks/use-core";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetTodayAttendanceQueryKey } from "@workspace/api-client-react";
 
-/* ── Attendance ring ─────────────────────────────────────── */
+/* ── Attendance ring ──────────────────────────────────────── */
 function AttendanceRing({ pct }: { pct: number }) {
   const r = 46, circ = 2 * Math.PI * r;
   const dash = (pct / 100) * circ;
@@ -30,38 +30,7 @@ function AttendanceRing({ pct }: { pct: number }) {
   );
 }
 
-/* ── Stat pill row ───────────────────────────────────────── */
-function StatPill({ label, val, dot }: { label: string; val: number; dot: string }) {
-  return (
-    <div className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
-      <div className="flex items-center gap-2">
-        <span className={cn("w-2 h-2 rounded-full shrink-0", dot)} />
-        <span className="text-xs text-muted-foreground">{label}</span>
-      </div>
-      <span className="text-xs font-bold text-foreground">{val}</span>
-    </div>
-  );
-}
-
-/* ── KPI card ────────────────────────────────────────────── */
-function KPICard({ icon: Icon, label, value, color, bg, border }: {
-  icon: any; label: string; value: number | string;
-  color: string; bg: string; border: string;
-}) {
-  return (
-    <div className={cn("bg-card rounded-xl border p-4 flex flex-col gap-3", border)}>
-      <div className={cn("p-2 rounded-lg w-fit", bg)}>
-        <Icon className={cn("w-4 h-4", color)} />
-      </div>
-      <div>
-        <p className={cn("text-2xl font-bold leading-none", color)}>{value}</p>
-        <p className="text-xs text-muted-foreground mt-1">{label}</p>
-      </div>
-    </div>
-  );
-}
-
-/* ── Status config ───────────────────────────────────────── */
+/* ── Status config ────────────────────────────────────────── */
 const STATUS: Record<string, { label: string; bg: string; text: string; dot: string }> = {
   present:  { label: "Present",  bg: "bg-emerald-100", text: "text-emerald-700", dot: "bg-emerald-500" },
   late:     { label: "Late",     bg: "bg-amber-100",   text: "text-amber-700",   dot: "bg-amber-500"  },
@@ -80,8 +49,8 @@ function fmtHours(h: any) {
 
 /* ═══════════════════════════════════════════════════════════ */
 export default function TodayAttendance() {
-  const [branchId, setBranchId]   = useState("all");
-  const [search,   setSearch]     = useState("");
+  const [branchId, setBranchId] = useState("all");
+  const [search, setSearch]     = useState("");
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const queryClient = useQueryClient();
 
@@ -91,7 +60,6 @@ export default function TodayAttendance() {
   const branches: any[] = useMemo(() => (branchesRaw as any[]) || [], [branchesRaw]);
 
   const allRecords: any[] = data?.records || [];
-
   const records = useMemo(() => {
     if (!search.trim()) return allRecords;
     const q = search.toLowerCase();
@@ -124,9 +92,9 @@ export default function TodayAttendance() {
     : new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Today's Attendance</h1>
@@ -149,33 +117,69 @@ export default function TodayAttendance() {
         </div>
       </div>
 
-      {/* KPI row — 3 cards only */}
-      <div className="grid grid-cols-3 gap-3">
-        <KPICard icon={Users}        label="Total Staff" value={total}   color="text-slate-700"   bg="bg-slate-100"  border="border-slate-200" />
-        <KPICard icon={CheckCircle2} label="Present"     value={present} color="text-emerald-600" bg="bg-emerald-50" border="border-emerald-100" />
-        <KPICard icon={XCircle}      label="Absent"      value={absent}  color="text-red-600"     bg="bg-red-50"     border="border-red-100" />
-      </div>
-
-      {/* Presence rate + filters — single column */}
-      <div className="flex flex-col gap-4">
-
-        {/* Attendance ring panel */}
-        <div className="bg-card rounded-xl border border-border p-5 flex items-center gap-6">
-          <AttendanceRing pct={attPct} />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-foreground mb-3">Presence Rate</p>
-            <StatPill label="Present"  val={present} dot="bg-emerald-500" />
-            <StatPill label="Late"     val={late}    dot="bg-amber-500" />
-            <StatPill label="On Leave" val={onLeave} dot="bg-blue-500" />
-            <StatPill label="Absent"   val={absent}  dot="bg-red-500" />
+      {/* ── Stats bar — full width single card ── */}
+      <div className="bg-card rounded-xl border border-border">
+        <div className="grid grid-cols-3 divide-x divide-border">
+          <div className="p-5 flex items-center gap-4">
+            <div className="p-2.5 bg-slate-100 rounded-xl">
+              <Users className="w-5 h-5 text-slate-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-slate-700 leading-none">{total}</p>
+              <p className="text-xs text-muted-foreground mt-1">Total Staff</p>
+            </div>
+          </div>
+          <div className="p-5 flex items-center gap-4">
+            <div className="p-2.5 bg-emerald-50 rounded-xl">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-emerald-600 leading-none">{present}</p>
+              <p className="text-xs text-muted-foreground mt-1">Present</p>
+            </div>
+          </div>
+          <div className="p-5 flex items-center gap-4">
+            <div className="p-2.5 bg-red-50 rounded-xl">
+              <XCircle className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-red-600 leading-none">{absent}</p>
+              <p className="text-xs text-muted-foreground mt-1">Absent</p>
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* Search + branch filter panel */}
-        <div className="bg-card rounded-xl border border-border p-5 flex flex-col gap-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Filter className="w-4 h-4 text-muted-foreground" /> Filter Records
+      {/* ── Presence rate — full width single card ── */}
+      <div className="bg-card rounded-xl border border-border p-5">
+        <p className="text-sm font-semibold text-foreground mb-4">Presence Rate</p>
+        <div className="flex items-center gap-6">
+          <AttendanceRing pct={attPct} />
+          <div className="flex-1 space-y-2">
+            {[
+              { label: "Present",  val: present, dot: "bg-emerald-500" },
+              { label: "Late",     val: late,    dot: "bg-amber-500" },
+              { label: "On Leave", val: onLeave, dot: "bg-blue-500" },
+              { label: "Absent",   val: absent,  dot: "bg-red-500" },
+            ].map(({ label, val, dot }) => (
+              <div key={label} className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
+                <div className="flex items-center gap-2">
+                  <span className={cn("w-2 h-2 rounded-full shrink-0", dot)} />
+                  <span className="text-xs text-muted-foreground">{label}</span>
+                </div>
+                <span className="text-xs font-bold text-foreground">{val}</span>
+              </div>
+            ))}
           </div>
+        </div>
+      </div>
+
+      {/* ── Filters — full width single card ── */}
+      <div className="bg-card rounded-xl border border-border p-5">
+        <div className="flex items-center gap-2 text-sm font-semibold text-foreground mb-4">
+          <Filter className="w-4 h-4 text-muted-foreground" /> Filter Records
+        </div>
+        <div className="space-y-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
@@ -197,16 +201,19 @@ export default function TodayAttendance() {
             ))}
           </select>
           <p className="text-xs text-muted-foreground">
-            Showing <strong className="text-foreground">{records.length}</strong> of <strong className="text-foreground">{total}</strong> employee{total !== 1 ? "s" : ""}
+            Showing <strong className="text-foreground">{records.length}</strong> of{" "}
+            <strong className="text-foreground">{total}</strong> employee{total !== 1 ? "s" : ""}
           </p>
         </div>
       </div>
 
-      {/* Table */}
+      {/* ── Table — full width single card ── */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
-        <div className="px-5 py-4 border-b border-border">
-          <h2 className="font-semibold text-base text-foreground">Employee Records</h2>
-          <p className="text-xs text-muted-foreground">Tap any row to see details — auto-refreshes every minute</p>
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-base text-foreground">Employee Records</h2>
+            <p className="text-xs text-muted-foreground">Auto-refreshes every minute</p>
+          </div>
         </div>
 
         {isLoading ? (
@@ -291,7 +298,6 @@ export default function TodayAttendance() {
           </div>
         )}
 
-        {/* Footer */}
         {!isLoading && records.length > 0 && (
           <div className="px-5 py-3 border-t border-border bg-muted/20 flex items-center justify-between text-xs text-muted-foreground flex-wrap gap-2">
             <div className="flex items-center gap-4 flex-wrap">
