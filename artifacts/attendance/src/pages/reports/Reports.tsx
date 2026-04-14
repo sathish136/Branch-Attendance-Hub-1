@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useGetAttendanceReport, useGetMonthlyReport, useGetOvertimeReport, useListBranches } from "@workspace/api-client-react";
 import { PageHeader, Card, Input, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { Users, Clock, Calendar, FileText, Sheet, AlignLeft } from "lucide-react";
+import { Users, Clock, Calendar, AlignLeft, Download } from "lucide-react";
+import { exportCsv } from "@/lib/utils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function apiUrl(path: string) { return `${BASE}/api${path}`; }
@@ -30,24 +31,16 @@ function diffHrs(a: string, b: string) {
   return ((new Date(b).getTime() - new Date(a).getTime()) / 3_600_000);
 }
 
-function ExportButtons() {
+function ExportBtn({ onExport, disabled }: { onExport: () => void; disabled?: boolean }) {
   return (
-    <div className="flex items-center gap-2 ml-auto self-end">
-      <button
-        onClick={() => {}}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
-      >
-        <FileText className="w-3.5 h-3.5" />
-        PDF
-      </button>
-      <button
-        onClick={() => {}}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg transition-colors"
-      >
-        <Sheet className="w-3.5 h-3.5" />
-        Excel
-      </button>
-    </div>
+    <button
+      onClick={onExport}
+      disabled={disabled}
+      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border bg-background text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 ml-auto self-end"
+    >
+      <Download className="w-3.5 h-3.5" />
+      Export CSV
+    </button>
   );
 }
 
@@ -126,7 +119,19 @@ function AttendanceReport() {
               <option value="leave">Leave</option>
             </Select>
           </div>
-          <ExportButtons />
+          <ExportBtn
+            disabled={!data?.records?.length}
+            onExport={() => {
+              const headers = ["Date","Emp ID","Employee","Branch","Status","In Time","Out Time","Total Hrs","OT Hrs"];
+              const rows = (data?.records || []).map((r: any) => [
+                r.date, r.employeeCode, r.employeeName, r.branchName,
+                r.status, r.inTime1 ? fmt(r.inTime1) : "", r.outTime1 ? fmt(r.outTime1) : "",
+                r.totalHours != null ? r.totalHours.toFixed(2) : "",
+                r.overtimeHours != null && r.overtimeHours > 0 ? r.overtimeHours.toFixed(2) : "",
+              ]);
+              exportCsv(`attendance-report-${startDate}-to-${endDate}.csv`, headers, rows);
+            }}
+          />
         </div>
       </Card>
 
@@ -223,7 +228,18 @@ function MonthlyReport() {
               {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
-          <ExportButtons />
+          <ExportBtn
+            disabled={!data?.employees?.length}
+            onExport={() => {
+              const headers = ["Emp ID","Employee","Branch","Designation","Present","Absent","Late","Half Day","Leave","Holiday","Work Hours","OT Hours","Att %"];
+              const rows = (data?.employees || []).map((e: any) => [
+                e.employeeCode, e.employeeName, e.branchName, e.designation,
+                e.presentDays, e.absentDays, e.lateDays, e.halfDays, e.leaveDays, e.holidayDays,
+                e.totalWorkHours.toFixed(2), e.overtimeHours.toFixed(2), `${e.attendancePercentage}%`,
+              ]);
+              exportCsv(`monthly-report-${getMonthName(month)}-${year}.csv`, headers, rows);
+            }}
+          />
         </div>
       </Card>
 

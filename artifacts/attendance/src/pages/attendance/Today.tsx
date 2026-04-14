@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { Search, MapPin, RefreshCw, Users, Fingerprint, PenLine, ChevronDown } from "lucide-react";
-import { cn, formatTime } from "@/lib/utils";
+import { Search, MapPin, RefreshCw, Users, Fingerprint, PenLine, ChevronDown, Download } from "lucide-react";
+import { cn, formatTime, exportCsv } from "@/lib/utils";
 import { useTodayAttendance } from "@/hooks/use-attendance";
 import { useBranches } from "@/hooks/use-core";
 import { useQueryClient } from "@tanstack/react-query";
@@ -48,6 +48,24 @@ export default function TodayAttendance() {
     setLastUpdated(new Date());
   }, [queryClient]);
 
+  function handleExport() {
+    const headers = ["Employee", "Emp ID", "Branch", "Status", "In Time", "Out Time", "Work Hours", "Source"];
+    const csvRows = records.map((r: any) => {
+      const wh = fmtHours(r.totalHours) ?? fmtHours(r.workHours1) ?? "";
+      return [
+        r.employeeName,
+        r.employeeCode,
+        r.branchName,
+        STATUS[r.status]?.label ?? r.status,
+        r.inTime1  ? formatTime(r.inTime1)  : "",
+        r.outTime1 ? formatTime(r.outTime1) : "",
+        wh,
+        r.source ?? "",
+      ];
+    });
+    exportCsv(`attendance-today-${dateStr.replace(/,/g, "").replace(/\s+/g, "-")}.csv`, headers, csvRows);
+  }
+
   useEffect(() => { const t = setInterval(refresh, 60_000); return () => clearInterval(t); }, [refresh]);
 
   const total   = data?.totalEmployees ?? 0;
@@ -76,6 +94,13 @@ export default function TodayAttendance() {
               {lastUpdated.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
             </p>
           </div>
+          <button
+            onClick={handleExport}
+            disabled={records.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-40"
+          >
+            <Download className="w-3.5 h-3.5" /> Export CSV
+          </button>
           <button onClick={refresh} disabled={isLoading}
             className="p-2 rounded-lg border border-border hover:bg-muted transition-colors">
             <RefreshCw className={cn("w-4 h-4 text-muted-foreground", isLoading && "animate-spin")} />
