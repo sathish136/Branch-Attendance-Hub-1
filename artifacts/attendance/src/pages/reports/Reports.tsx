@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import { useGetAttendanceReport, useGetMonthlyReport, useGetOvertimeReport, useListBranches } from "@workspace/api-client-react";
 import { PageHeader, Card, Input, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { Users, Clock, Calendar, AlignLeft, Download } from "lucide-react";
-import { exportCsv } from "@/lib/utils";
+import { Users, Clock, Calendar, AlignLeft, FileText, Sheet } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function apiUrl(path: string) { return `${BASE}/api${path}`; }
@@ -31,16 +30,50 @@ function diffHrs(a: string, b: string) {
   return ((new Date(b).getTime() - new Date(a).getTime()) / 3_600_000);
 }
 
-function ExportBtn({ onExport, disabled }: { onExport: () => void; disabled?: boolean }) {
+function ExportButtons({
+  getHeaders, getRows, filename, disabled,
+}: {
+  getHeaders: () => string[];
+  getRows: () => (string | number | null | undefined)[][];
+  filename: string;
+  disabled?: boolean;
+}) {
+  async function handlePdf() {
+    const { default: jsPDF } = await import("jspdf");
+    const { default: autoTable } = await import("jspdf-autotable");
+    const doc = new jsPDF({ orientation: "landscape" });
+    doc.setFontSize(13);
+    doc.text(filename, 14, 16);
+    autoTable(doc, {
+      head: [getHeaders()],
+      body: getRows().map(r => r.map(v => String(v ?? ""))),
+      startY: 22,
+      styles: { fontSize: 7, cellPadding: 2 },
+      headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [245, 247, 255] },
+    });
+    doc.save(`${filename}.pdf`);
+  }
+
+  async function handleExcel() {
+    const XLSX = await import("xlsx");
+    const ws = XLSX.utils.aoa_to_sheet([getHeaders(), ...getRows().map(r => r.map(v => v ?? ""))]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Report");
+    XLSX.writeFile(wb, `${filename}.xlsx`);
+  }
+
   return (
-    <button
-      onClick={onExport}
-      disabled={disabled}
-      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border bg-background text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 ml-auto self-end"
-    >
-      <Download className="w-3.5 h-3.5" />
-      Export CSV
-    </button>
+    <div className="flex items-center gap-2 ml-auto self-end">
+      <button onClick={handlePdf} disabled={disabled}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-40">
+        <FileText className="w-3.5 h-3.5" /> PDF
+      </button>
+      <button onClick={handleExcel} disabled={disabled}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg transition-colors disabled:opacity-40">
+        <Sheet className="w-3.5 h-3.5" /> Excel
+      </button>
+    </div>
   );
 }
 
@@ -119,18 +152,16 @@ function AttendanceReport() {
               <option value="leave">Leave</option>
             </Select>
           </div>
-          <ExportBtn
+          <ExportButtons
             disabled={!data?.records?.length}
-            onExport={() => {
-              const headers = ["Date","Emp ID","Employee","Branch","Status","In Time","Out Time","Total Hrs","OT Hrs"];
-              const rows = (data?.records || []).map((r: any) => [
-                r.date, r.employeeCode, r.employeeName, r.branchName,
-                r.status, r.inTime1 ? fmt(r.inTime1) : "", r.outTime1 ? fmt(r.outTime1) : "",
-                r.totalHours != null ? r.totalHours.toFixed(2) : "",
-                r.overtimeHours != null && r.overtimeHours > 0 ? r.overtimeHours.toFixed(2) : "",
-              ]);
-              exportCsv(`attendance-report-${startDate}-to-${endDate}.csv`, headers, rows);
-            }}
+            filename={`Attendance-Report-${startDate}-to-${endDate}`}
+            getHeaders={() => ["Date","Emp ID","Employee","Branch","Status","In Time","Out Time","Total Hrs","OT Hrs"]}
+            getRows={() => (data?.records || []).map((r: any) => [
+              r.date, r.employeeCode, r.employeeName, r.branchName,
+              r.status, r.inTime1 ? fmt(r.inTime1) : "", r.outTime1 ? fmt(r.outTime1) : "",
+              r.totalHours != null ? r.totalHours.toFixed(2) : "",
+              r.overtimeHours != null && r.overtimeHours > 0 ? r.overtimeHours.toFixed(2) : "",
+            ])}
           />
         </div>
       </Card>
@@ -228,17 +259,15 @@ function MonthlyReport() {
               {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
-          <ExportBtn
+          <ExportButtons
             disabled={!data?.employees?.length}
-            onExport={() => {
-              const headers = ["Emp ID","Employee","Branch","Designation","Present","Absent","Late","Half Day","Leave","Holiday","Work Hours","OT Hours","Att %"];
-              const rows = (data?.employees || []).map((e: any) => [
-                e.employeeCode, e.employeeName, e.branchName, e.designation,
-                e.presentDays, e.absentDays, e.lateDays, e.halfDays, e.leaveDays, e.holidayDays,
-                e.totalWorkHours.toFixed(2), e.overtimeHours.toFixed(2), `${e.attendancePercentage}%`,
-              ]);
-              exportCsv(`monthly-report-${getMonthName(month)}-${year}.csv`, headers, rows);
-            }}
+            filename={`Monthly-Report-${getMonthName(month)}-${year}`}
+            getHeaders={() => ["Emp ID","Employee","Branch","Designation","Present","Absent","Late","Half Day","Leave","Holiday","Work Hours","OT Hours","Att %"]}
+            getRows={() => (data?.employees || []).map((e: any) => [
+              e.employeeCode, e.employeeName, e.branchName, e.designation,
+              e.presentDays, e.absentDays, e.lateDays, e.halfDays, e.leaveDays, e.holidayDays,
+              e.totalWorkHours.toFixed(2), e.overtimeHours.toFixed(2), `${e.attendancePercentage}%`,
+            ])}
           />
         </div>
       </Card>
@@ -320,7 +349,15 @@ function OvertimeReport() {
               {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
-          <ExportButtons />
+          <ExportButtons
+            disabled={!data?.employees?.length}
+            filename={`Overtime-Report-${startDate}-to-${endDate}`}
+            getHeaders={() => ["Emp ID","Employee","Branch","Designation","OT Days","Total OT Hours"]}
+            getRows={() => (data?.employees || []).map((e: any) => [
+              e.employeeCode, e.employeeName, e.branchName, e.designation,
+              e.overtimeDays, e.totalOvertimeHours.toFixed(2),
+            ])}
+          />
         </div>
       </Card>
 
@@ -484,7 +521,26 @@ function SplitReport() {
         <div className="flex flex-wrap items-end gap-3">
           <div><Label className="text-xs">Start Date</Label><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
           <div><Label className="text-xs">End Date</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
-          <ExportButtons />
+          <ExportButtons
+            disabled={!rows.length}
+            filename={`Split-Report-${startDate}-to-${endDate}`}
+            getHeaders={() => {
+              const sessionHeaders: string[] = [];
+              for (let i = 0; i < (maxSessions || 1); i++) {
+                sessionHeaders.push(`Session ${i+1} In`, `Session ${i+1} Out`, `Session ${i+1} Hrs`);
+              }
+              return ["Date","Bio ID","Employee",...sessionHeaders,"Total Hrs"];
+            }}
+            getRows={() => rows.map(r => {
+              const cells: (string | number | null)[] = [r.date, r.biometricId, r.employeeName];
+              for (let i = 0; i < (maxSessions || 1); i++) {
+                const s = r.sessions[i];
+                cells.push(s ? fmt(s.inTime) : "", s?.outTime ? fmt(s.outTime) : "", s?.durationHrs != null ? s.durationHrs.toFixed(2) : "");
+              }
+              cells.push(r.totalHrs > 0 ? r.totalHrs.toFixed(2) : "");
+              return cells;
+            })}
+          />
         </div>
       </Card>
 
