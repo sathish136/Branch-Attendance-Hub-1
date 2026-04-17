@@ -48,6 +48,15 @@ function ExportButtons({
     });
   }
 
+  function getImageDimensions(dataUrl: string): Promise<{ w: number; h: number }> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => resolve({ w: 1, h: 1 });
+      img.src = dataUrl;
+    });
+  }
+
   async function handlePdf() {
     const { default: jsPDF } = await import("jspdf");
     const { default: autoTable } = await import("jspdf-autotable");
@@ -62,28 +71,37 @@ function ExportButtons({
       liveUImgData = await toDataUrl("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQCzrc0k5wmNzmItazY38yj1_7K5zAFLMxn-Q&s");
     } catch { /* proceed without images */ }
 
-    const headerH = 38;
-
-    // Sri Lanka Post logo — centered, natural square aspect ratio
-    const logoSize = 22;
-    const logoX = pageW / 2 - logoSize / 2;
-    const logoY = 4;
+    // Get actual image dimensions to preserve aspect ratio
+    const maxLogoH = 22; // max height in mm
+    let logoW = maxLogoH;
+    let logoH = maxLogoH;
     if (slpImgData) {
-      doc.addImage(slpImgData, "PNG", logoX, logoY, logoSize, logoSize);
+      const dims = await getImageDimensions(slpImgData);
+      const ratio = dims.w / dims.h;
+      logoH = maxLogoH;
+      logoW = maxLogoH * ratio;
     }
+
+    const logoY = 4;
+    const logoX = pageW / 2 - logoW / 2;
+    if (slpImgData) {
+      doc.addImage(slpImgData, "PNG", logoX, logoY, logoW, logoH);
+    }
+
+    const headerH = logoY + logoH + 14;
 
     // Organization name — centered below logo
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
     doc.setTextColor(30, 58, 138);
-    doc.text("Sri Lanka Post — Colombo District", pageW / 2, logoY + logoSize + 4, { align: "center" });
+    doc.text("Sri Lanka Post — Colombo District", pageW / 2, logoY + logoH + 5, { align: "center" });
 
     // Report name — centered, smaller
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(100, 100, 120);
     const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
-    doc.text(`${filename}   |   Generated: ${today}`, pageW / 2, logoY + logoSize + 9.5, { align: "center" });
+    doc.text(`${filename}   |   Generated: ${today}`, pageW / 2, logoY + logoH + 10.5, { align: "center" });
 
     // Divider line below header
     doc.setDrawColor(30, 58, 138);
