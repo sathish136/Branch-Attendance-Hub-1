@@ -543,40 +543,33 @@ type PunchLog = {
   deviceName: string;
 };
 
-type Session = { inTime: string; outTime: string | null; durationHrs: number | null };
 type EmployeeDayRow = {
   key: string;
   employeeName: string;
   biometricId: string;
   date: string;
-  sessions: Session[];
+  firstIn:  string | null;
+  firstOut: string | null;
+  lastIn:   string | null;
+  lastOut:  string | null;
   totalHrs: number;
 };
 
-function buildSessions(punches: PunchLog[]): Session[] {
+function buildTwoSessions(punches: PunchLog[]): Pick<EmployeeDayRow, "firstIn"|"firstOut"|"lastIn"|"lastOut"|"totalHrs"> {
   const sorted = [...punches].sort((a, b) => new Date(a.punchTime).getTime() - new Date(b.punchTime).getTime());
-  const sessions: Session[] = [];
-  let pendingIn: string | null = null;
+  const ins  = sorted.filter(p => p.punchType === "in").map(p => p.punchTime);
+  const outs = sorted.filter(p => p.punchType === "out").map(p => p.punchTime);
 
-  for (const p of sorted) {
-    if (p.punchType === "in") {
-      if (pendingIn !== null) {
-        sessions.push({ inTime: pendingIn, outTime: null, durationHrs: null });
-      }
-      pendingIn = p.punchTime;
-    } else if (p.punchType === "out") {
-      if (pendingIn !== null) {
-        sessions.push({ inTime: pendingIn, outTime: p.punchTime, durationHrs: diffHrs(pendingIn, p.punchTime) });
-        pendingIn = null;
-      } else {
-        sessions.push({ inTime: p.punchTime, outTime: null, durationHrs: null });
-      }
-    }
-  }
-  if (pendingIn !== null) {
-    sessions.push({ inTime: pendingIn, outTime: null, durationHrs: null });
-  }
-  return sessions;
+  const firstIn  = ins[0]  ?? null;
+  const firstOut = outs[0] ?? null;
+  const lastIn   = ins.length  > 1 ? ins[ins.length - 1]   : null;
+  const lastOut  = outs.length > 1 ? outs[outs.length - 1] : (outs[0] && outs[0] !== firstOut ? outs[outs.length - 1] : null);
+
+  let totalHrs = 0;
+  if (firstIn && firstOut) totalHrs += diffHrs(firstIn, firstOut);
+  if (lastIn  && lastOut)  totalHrs += diffHrs(lastIn, lastOut);
+
+  return { firstIn, firstOut, lastIn, lastOut, totalHrs };
 }
 
 function useSplitReport(startDate: string, endDate: string) {
@@ -613,11 +606,10 @@ function useSplitReport(startDate: string, endDate: string) {
         }
 
         const result: EmployeeDayRow[] = Object.entries(groups).map(([key, punches]) => {
-          const sessions = buildSessions(punches);
-          const totalHrs = sessions.reduce((s, p) => s + (p.durationHrs ?? 0), 0);
+          const twoSessions = buildTwoSessions(punches);
           const sample = punches[0];
           const dateKey = new Date(sample.punchTime).toISOString().split("T")[0];
-          return { key, employeeName: sample.employeeName, biometricId: sample.biometricId, date: dateKey, sessions, totalHrs };
+          return { key, employeeName: sample.employeeName, biometricId: sample.biometricId, date: dateKey, ...twoSessions };
         });
 
         result.sort((a, b) => a.date.localeCompare(b.date) || a.employeeName.localeCompare(b.employeeName));
@@ -635,13 +627,23 @@ function useSplitReport(startDate: string, endDate: string) {
   return { rows, loading };
 }
 
+function SessionCell({ time, type }: { time: string | null; type: "in" | "out" }) {
+  if (!time) return <span className="text-muted-foreground/40">—</span>;
+  return (
+    <span className={cn(
+      "inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-xs font-semibold",
+      type === "in"  ? "bg-green-50 text-green-700"  : "bg-red-50 text-red-600"
+    )}>
+      {fmt(time)}
+    </span>
+  );
+}
+
 function SplitReport() {
   const now = new Date();
   const [startDate, setStartDate] = useState(now.toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(now.toISOString().split("T")[0]);
   const { rows, loading } = useSplitReport(startDate, endDate);
-
-  const maxSessions = rows.reduce((m, r) => Math.max(m, r.sessions.length), 0);
 
   return (
     <div className="space-y-4">
@@ -652,22 +654,17 @@ function SplitReport() {
           <ExportButtons
             disabled={!rows.length}
             filename={`Split-Report-${startDate}-to-${endDate}`}
-            getHeaders={() => {
-              const sessionHeaders: string[] = [];
-              for (let i = 0; i < (maxSessions || 1); i++) {
-                sessionHeaders.push(`Session ${i+1} In`, `Session ${i+1} Out`, `Session ${i+1} Hrs`);
-              }
-              return ["Date","Bio ID","Employee",...sessionHeaders,"Total Hrs"];
-            }}
-            getRows={() => rows.map(r => {
-              const cells: (string | number | null)[] = [r.date, r.biometricId, r.employeeName];
-              for (let i = 0; i < (maxSessions || 1); i++) {
-                const s = r.sessions[i];
-                cells.push(s ? fmt(s.inTime) : "", s?.outTime ? fmt(s.outTime) : "", s?.durationHrs != null ? s.durationHrs.toFixed(2) : "");
-              }
-              cells.push(r.totalHrs > 0 ? r.totalHrs.toFixed(2) : "");
-              return cells;
-            })}
+            getHeaders={() => ["Date","Bio ID","Employee","1st In","1st Out","Last In","Last Out","Total Hrs"]}
+            getRows={() => rows.map(r => [
+              r.date,
+              r.biometricId,
+              r.employeeName,
+              r.firstIn  ? fmt(r.firstIn)  : "",
+              r.firstOut ? fmt(r.firstOut) : "",
+              r.lastIn   ? fmt(r.lastIn)   : "",
+              r.lastOut  ? fmt(r.lastOut)  : "",
+              r.totalHrs > 0 ? r.totalHrs.toFixed(2) : "",
+            ])}
           />
         </div>
       </Card>
@@ -675,7 +672,6 @@ function SplitReport() {
       {rows.length > 0 && (
         <Card className="p-3 flex gap-6 text-sm border-blue-200 bg-blue-50/30">
           <div><span className="text-muted-foreground">Records: </span><strong>{rows.length}</strong></div>
-          <div><span className="text-muted-foreground">Max Sessions/Day: </span><strong>{maxSessions}</strong></div>
         </Card>
       )}
 
@@ -683,52 +679,40 @@ function SplitReport() {
         {loading ? <div className="p-8 text-center text-sm text-muted-foreground">Loading punch sessions...</div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">Date</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">Bio ID</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">Employee</th>
-                  {Array.from({ length: maxSessions || 1 }, (_, i) => (
-                    <th key={i} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">
-                      Session {i + 1}
-                    </th>
-                  ))}
-                  <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">Total Hrs</th>
+              <thead>
+                <tr className="bg-[#16306e] text-white">
+                  <th className="px-3 py-3 text-left font-semibold whitespace-nowrap" rowSpan={2}>Date</th>
+                  <th className="px-3 py-3 text-left font-semibold whitespace-nowrap" rowSpan={2}>Bio ID</th>
+                  <th className="px-3 py-3 text-left font-semibold whitespace-nowrap" rowSpan={2}>Employee</th>
+                  <th className="px-3 py-3 text-center font-semibold whitespace-nowrap border-l border-white/20" colSpan={2}>1st Session</th>
+                  <th className="px-3 py-3 text-center font-semibold whitespace-nowrap border-l border-white/20" colSpan={2}>Last Session</th>
+                  <th className="px-3 py-3 text-center font-semibold whitespace-nowrap border-l border-white/20" rowSpan={2}>Total Hrs</th>
+                </tr>
+                <tr className="bg-[#1e3a8a] text-white/80 text-[10px]">
+                  <th className="px-3 py-1.5 text-center border-l border-white/20">In</th>
+                  <th className="px-3 py-1.5 text-center">Out</th>
+                  <th className="px-3 py-1.5 text-center border-l border-white/20">In</th>
+                  <th className="px-3 py-1.5 text-center">Out</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {rows.map(r => (
-                  <tr key={r.key} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-3 py-2 font-mono whitespace-nowrap">{r.date}</td>
+                {rows.map((r, idx) => (
+                  <tr key={r.key} className={cn("hover:bg-muted/30 transition-colors", idx % 2 === 1 && "bg-blue-50/30")}>
+                    <td className="px-3 py-2 font-mono whitespace-nowrap text-muted-foreground">{r.date}</td>
                     <td className="px-3 py-2 font-mono text-muted-foreground">{r.biometricId}</td>
-                    <td className="px-3 py-2 font-medium whitespace-nowrap">{r.employeeName}</td>
-                    {Array.from({ length: maxSessions || 1 }, (_, i) => {
-                      const s = r.sessions[i];
-                      return (
-                        <td key={i} className="px-3 py-2 whitespace-nowrap">
-                          {s ? (
-                            <span className="inline-flex items-center gap-1">
-                              <span className="text-green-700 font-mono">{fmt(s.inTime)}</span>
-                              <span className="text-muted-foreground">→</span>
-                              <span className="text-red-600 font-mono">{s.outTime ? fmt(s.outTime) : "—"}</span>
-                              {s.durationHrs != null && (
-                                <span className="ml-1 px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold">
-                                  {s.durationHrs.toFixed(1)}h
-                                </span>
-                              )}
-                            </span>
-                          ) : <span className="text-muted-foreground/40">—</span>}
-                        </td>
-                      );
-                    })}
-                    <td className="px-3 py-2 font-bold text-blue-700 font-mono whitespace-nowrap">
+                    <td className="px-3 py-2 font-semibold whitespace-nowrap">{r.employeeName}</td>
+                    <td className="px-3 py-2 text-center border-l border-border"><SessionCell time={r.firstIn}  type="in"  /></td>
+                    <td className="px-3 py-2 text-center">                      <SessionCell time={r.firstOut} type="out" /></td>
+                    <td className="px-3 py-2 text-center border-l border-border"><SessionCell time={r.lastIn}   type="in"  /></td>
+                    <td className="px-3 py-2 text-center">                      <SessionCell time={r.lastOut}  type="out" /></td>
+                    <td className="px-3 py-2 text-center font-bold text-blue-700 font-mono border-l border-border whitespace-nowrap">
                       {r.totalHrs > 0 ? `${r.totalHrs.toFixed(1)}h` : "—"}
                     </td>
                   </tr>
                 ))}
                 {!rows.length && !loading && (
                   <tr>
-                    <td colSpan={4 + (maxSessions || 1)} className="text-center py-10 text-muted-foreground">
+                    <td colSpan={8} className="text-center py-10 text-muted-foreground">
                       No punch records found for the selected date range.
                     </td>
                   </tr>
