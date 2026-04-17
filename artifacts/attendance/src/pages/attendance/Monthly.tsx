@@ -20,11 +20,22 @@ const STATUS_CFG: Record<string, { bg: string; text: string; badge: string; labe
   holiday:  { bg: "bg-gray-100",  text: "text-gray-500",   badge: "bg-gray-100 text-gray-600 border-gray-200",       label: "Holiday",  dot: "bg-gray-400",   abbr: "H"  },
 };
 
-function fmtTime(t: string | null | undefined) {
+// Robustly extract HH and MM from either "HH:MM:SS" or a full ISO datetime string
+function parseTime(t: string | null | undefined): { h: number; m: string } | null {
   if (!t) return null;
-  const [h, m] = t.split(":");
-  const hr = parseInt(h);
-  return `${hr > 12 ? hr - 12 : hr || 12}:${m} ${hr >= 12 ? "PM" : "AM"}`;
+  // ISO datetime: "2026-04-12T08:47:00.000Z" → extract after "T"
+  const timeStr = t.includes("T") ? t.split("T")[1] : t;
+  const parts = timeStr.split(":");
+  const h = parseInt(parts[0], 10);
+  const m = (parts[1] || "00").substring(0, 2);
+  if (isNaN(h)) return null;
+  return { h, m };
+}
+function fmtTime(t: string | null | undefined) {
+  const p = parseTime(t);
+  if (!p) return null;
+  const { h, m } = p;
+  return `${h > 12 ? h - 12 : h || 12}:${m} ${h >= 12 ? "PM" : "AM"}`;
 }
 function fmtHrs(h: number | null | undefined) {
   if (h == null || h === 0) return "—";
@@ -122,9 +133,9 @@ function addPdfFooters(doc: any, pageH: number, pageW: number, liveUData: string
 
 // Abbreviated 24h time for tight PDF cells e.g. "08:30"
 function fmtTime24(t: string | null | undefined) {
-  if (!t) return null;
-  const [h, m] = t.split(":");
-  return `${String(parseInt(h)).padStart(2, "0")}:${m}`;
+  const p = parseTime(t);
+  if (!p) return null;
+  return `${String(p.h).padStart(2, "0")}:${p.m}`;
 }
 
 // ── Grid PDF — per-employee rows layout matching official monthly attendance sheet ──
@@ -472,13 +483,13 @@ async function exportTablePdf(
     tableWidth: pageW - margin * 2,
     styles: {
       fontSize: 9,
-      cellPadding: { top: 4, bottom: 4, left: 5, right: 5 },
+      cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
       font: "helvetica",
       textColor: [40, 40, 60],
       lineColor: [220, 228, 240],
       lineWidth: 0.25,
       minCellHeight: 11,
-      overflow: "linebreak",
+      overflow: "ellipsize",
     },
     headStyles: {
       fillColor: [22, 48, 110],
@@ -489,17 +500,18 @@ async function exportTablePdf(
       halign: "center",
       lineWidth: 0,
       minCellHeight: 12,
+      overflow: "ellipsize",
     },
     columnStyles: {
       0: { cellWidth: 36, halign: "center" },
-      1: { cellWidth: 15, halign: "center", textColor: [100, 100, 120] },
+      1: { cellWidth: 22, halign: "center", textColor: [100, 100, 120], overflow: "ellipsize" },
       2: { cellWidth: 55, halign: "left",   fontStyle: "bold", textColor: [22, 48, 110] },
       3: { cellWidth: 22, halign: "center", textColor: [80, 80, 100] },
-      4: { cellWidth: 25, halign: "center" },
+      4: { cellWidth: 26, halign: "center" },
       5: { cellWidth: 28, halign: "center", textColor: [21, 128, 61]  },
       6: { cellWidth: 28, halign: "center", textColor: [185, 28, 28] },
-      7: { cellWidth: 24, halign: "center", textColor: [29, 78, 216]  },
-      8: { cellWidth: 22, halign: "center", textColor: [194, 65, 12]  },
+      7: { cellWidth: 26, halign: "center", textColor: [29, 78, 216]  },
+      8: { cellWidth: 24, halign: "center", textColor: [194, 65, 12]  },
     },
     bodyStyles: { fillColor: [255, 255, 255] },
     // Build an array of row indices where a new employee group starts
