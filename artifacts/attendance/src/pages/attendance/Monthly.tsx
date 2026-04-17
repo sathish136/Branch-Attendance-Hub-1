@@ -440,7 +440,7 @@ async function exportTablePdf(
   filename: string,
 ) {
   const { default: autoTable } = await import("jspdf-autotable");
-  const { doc, pageW, pageH, headerH, liveUData } = await buildPdfBase("portrait", `Timing Detail — ${monthName} ${year}`, filename);
+  const { doc, pageW, pageH, headerH, liveUData } = await buildPdfBase("landscape", `Timing Detail — ${monthName} ${year}`, filename);
 
   const margin = 10;
 
@@ -471,34 +471,35 @@ async function exportTablePdf(
     margin: { left: margin, right: margin },
     tableWidth: pageW - margin * 2,
     styles: {
-      fontSize: 8,
-      cellPadding: { top: 3.5, bottom: 3.5, left: 4, right: 4 },
+      fontSize: 9,
+      cellPadding: { top: 4, bottom: 4, left: 5, right: 5 },
       font: "helvetica",
       textColor: [40, 40, 60],
       lineColor: [220, 228, 240],
       lineWidth: 0.25,
-      minCellHeight: 10,
+      minCellHeight: 11,
       overflow: "linebreak",
     },
     headStyles: {
       fillColor: [22, 48, 110],
       textColor: [255, 255, 255],
       fontStyle: "bold",
-      fontSize: 8.5,
-      cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
+      fontSize: 9,
+      cellPadding: { top: 5, bottom: 5, left: 4, right: 4 },
       halign: "center",
       lineWidth: 0,
+      minCellHeight: 12,
     },
     columnStyles: {
-      0: { cellWidth: 28, halign: "center" },
-      1: { cellWidth: 12, halign: "center", textColor: [100, 100, 120] },
-      2: { cellWidth: 40, halign: "left", fontStyle: "bold", textColor: [22, 48, 110] },
-      3: { cellWidth: 18, halign: "center", textColor: [80, 80, 100] },
-      4: { cellWidth: 20, halign: "center" },
-      5: { cellWidth: 22, halign: "center", textColor: [21, 128, 61]  },
-      6: { cellWidth: 22, halign: "center", textColor: [185, 28, 28] },
-      7: { cellWidth: 18, halign: "center", textColor: [29, 78, 216]  },
-      8: { cellWidth: 15, halign: "center", textColor: [194, 65, 12]  },
+      0: { cellWidth: 36, halign: "center" },
+      1: { cellWidth: 15, halign: "center", textColor: [100, 100, 120] },
+      2: { cellWidth: 55, halign: "left",   fontStyle: "bold", textColor: [22, 48, 110] },
+      3: { cellWidth: 22, halign: "center", textColor: [80, 80, 100] },
+      4: { cellWidth: 25, halign: "center" },
+      5: { cellWidth: 28, halign: "center", textColor: [21, 128, 61]  },
+      6: { cellWidth: 28, halign: "center", textColor: [185, 28, 28] },
+      7: { cellWidth: 24, halign: "center", textColor: [29, 78, 216]  },
+      8: { cellWidth: 22, halign: "center", textColor: [194, 65, 12]  },
     },
     bodyStyles: { fillColor: [255, 255, 255] },
     // Build an array of row indices where a new employee group starts
