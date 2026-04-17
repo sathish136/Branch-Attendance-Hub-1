@@ -120,7 +120,14 @@ function addPdfFooters(doc: any, pageH: number, pageW: number, liveUData: string
   }
 }
 
-// ── Grid PDF  — status codes only, computed narrow column widths ───────────────
+// Abbreviated 24h time for tight PDF cells e.g. "08:30"
+function fmtTime24(t: string | null | undefined) {
+  if (!t) return null;
+  const [h, m] = t.split(":");
+  return `${String(parseInt(h)).padStart(2, "0")}:${m}`;
+}
+
+// ── Grid PDF — compact register, optionally includes In/Out times ─────────────
 async function exportGridPdf(
   rows: any[],
   daysArray: number[],
@@ -128,31 +135,40 @@ async function exportGridPdf(
   month: number,
   monthName: string,
   filename: string,
+  showTimes: boolean,
 ) {
   const { default: autoTable } = await import("jspdf-autotable");
-  const { doc, pageW, pageH, headerH, liveUData } = await buildPdfBase("landscape", `Monthly Attendance Register — ${monthName} ${year}`, filename);
+  const title = showTimes
+    ? `Monthly Attendance with Timing — ${monthName} ${year}`
+    : `Monthly Attendance Register — ${monthName} ${year}`;
+  const { doc, pageW, pageH, headerH, liveUData } = await buildPdfBase("landscape", title, filename);
 
   const margin = 8;
   const contentW = pageW - margin * 2;
 
-  // Fixed column widths (mm)
-  const empW  = 40;
-  const codeW = 15;
+  // Fixed column widths (mm) — when showTimes, day columns are wider to fit 3 lines
+  const empW  = 38;
+  const codeW = 14;
   const pW    = 8;
   const aW    = 8;
   const lW    = 8;
-  const thrW  = 15;
-  const otW   = 13;
+  const thrW  = 14;
+  const otW   = 12;
   const fixedW = empW + codeW + pW + aW + lW + thrW + otW;
-  const dayW  = Math.max(5, (contentW - fixedW) / daysArray.length);
+  // With times we need ~8mm per day, without 5mm
+  const dayW  = showTimes
+    ? Math.max(7.5, (contentW - fixedW) / daysArray.length)
+    : Math.max(5,   (contentW - fixedW) / daysArray.length);
 
-  // Build column styles
   const colStyles: Record<number, any> = {
     0: { cellWidth: empW,  halign: "left", fontStyle: "bold", textColor: [22, 48, 110] },
     1: { cellWidth: codeW, halign: "center", textColor: [80, 80, 100], fontSize: 6 },
   };
   daysArray.forEach((_, i) => {
-    colStyles[2 + i] = { cellWidth: dayW, halign: "center", cellPadding: { top: 1.5, bottom: 1.5, left: 0.5, right: 0.5 } };
+    colStyles[2 + i] = {
+      cellWidth: dayW, halign: "center",
+      cellPadding: { top: 1, bottom: 1, left: 0.5, right: 0.5 },
+    };
   });
   const base = 2 + daysArray.length;
   colStyles[base]   = { cellWidth: pW,   halign: "center", fontStyle: "bold", textColor: [21, 128, 61]  };
@@ -171,9 +187,17 @@ async function exportGridPdf(
     row.employeeName,
     row.employeeCode,
     ...daysArray.map(day => {
-      const e  = row.dailyStatus?.find((d: any) => d.day === day);
-      const st = e?.status || "absent";
-      return (STATUS_CFG[st] || STATUS_CFG.absent).abbr;
+      const e   = row.dailyStatus?.find((d: any) => d.day === day);
+      const st  = e?.status || "absent";
+      const abbr = (STATUS_CFG[st] || STATUS_CFG.absent).abbr;
+      if (!showTimes || !e) return abbr;
+      // With times: "P\n08:30\n17:15" — abbreviated 24h, newline separated
+      const parts = [abbr];
+      const inT  = fmtTime24(e.inTime);
+      const outT = fmtTime24(e.outTime);
+      if (inT)  parts.push(`↑${inT}`);
+      if (outT) parts.push(`↓${outT}`);
+      return parts.join("\n");
     }),
     row.presentDays  ?? 0,
     row.absentDays   ?? 0,
@@ -189,14 +213,14 @@ async function exportGridPdf(
     margin: { left: margin, right: margin },
     tableWidth: contentW,
     styles: {
-      fontSize: 6.5,
-      cellPadding: { top: 2, bottom: 2, left: 1.5, right: 1.5 },
+      fontSize: showTimes ? 5.5 : 6.5,
+      cellPadding: { top: showTimes ? 1 : 2, bottom: showTimes ? 1 : 2, left: 1.5, right: 1.5 },
       font: "helvetica",
       textColor: [40, 40, 60],
       lineColor: [210, 220, 235],
       lineWidth: 0.2,
-      minCellHeight: 7,
-      overflow: "hidden",
+      minCellHeight: showTimes ? 10 : 7,
+      overflow: "linebreak",
     },
     headStyles: {
       fillColor: [22, 48, 110],
@@ -212,23 +236,24 @@ async function exportGridPdf(
     alternateRowStyles: { fillColor: [247, 250, 255] },
     bodyStyles:         { fillColor: [255, 255, 255] },
     didParseCell: (data: any) => {
-      // Highlight Sundays in red tint
       const dayIdx = data.column.index - 2;
       if (dayIdx >= 0 && dayIdx < daysArray.length) {
         const day = daysArray[dayIdx];
+        // Sunday tint
         if (isSunday(year, month, day)) {
           if (data.section === "head") data.cell.styles.fillColor = [127, 29, 29];
           if (data.section === "body") data.cell.styles.fillColor = [254, 242, 242];
         }
-        // Color code status cells
+        // Color code by status abbreviation (cell may be "P", "P\n08:30\n17:15", etc.)
         if (data.section === "body") {
           const v = String(data.cell.raw || "");
-          if (v === "P")  data.cell.styles.textColor = [21, 128, 61];
-          if (v === "L")  data.cell.styles.textColor = [146, 64, 14];
-          if (v === "A")  data.cell.styles.textColor = [185, 28, 28];
-          if (v === "HD") data.cell.styles.textColor = [113, 63, 18];
-          if (v === "LV") data.cell.styles.textColor = [29, 78, 216];
-          if (v === "H")  data.cell.styles.textColor = [100, 100, 120];
+          const abbr = v.split("\n")[0]; // first line is always the status abbr
+          if (abbr === "P")  data.cell.styles.textColor = [21, 128, 61];
+          if (abbr === "L")  data.cell.styles.textColor = [146, 64, 14];
+          if (abbr === "A")  data.cell.styles.textColor = [185, 28, 28];
+          if (abbr === "HD") data.cell.styles.textColor = [113, 63, 18];
+          if (abbr === "LV") data.cell.styles.textColor = [29, 78, 216];
+          if (abbr === "H")  data.cell.styles.textColor = [100, 100, 120];
         }
       }
     },
@@ -463,7 +488,7 @@ export default function MonthlySheet() {
     setExporting(true);
     try {
       if (view === "grid") {
-        await exportGridPdf(rows, daysArray, year, month, monthName, filename);
+        await exportGridPdf(rows, daysArray, year, month, monthName, filename, showTimes);
       } else {
         await exportTablePdf(filteredTableRows, monthName, year, `${filename}-Timing`);
       }
@@ -758,7 +783,7 @@ export default function MonthlySheet() {
           </span>
         ))}
         <span className="ml-auto text-muted-foreground/60 italic">
-          Grid PDF = compact register · Table PDF = timing detail
+          Grid PDF includes times when "Show times" is on · Table PDF = full timing rows
         </span>
       </div>
     </div>
