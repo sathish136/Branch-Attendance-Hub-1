@@ -227,7 +227,7 @@ async function exportGridPdf(
       { label: "Employee Name:", value: row.employeeName || "N/A" },
       { label: "Employee ID:",   value: row.employeeCode || "N/A" },
       { label: "Department:",    value: row.department   || "N/A" },
-      { label: "Staff Category:", value: row.staffCategory || "Officers" },
+      ...(row.staffCategory ? [{ label: "Staff Category:", value: row.staffCategory }] : []),
     ];
     const fw = bw / 4;
     fields.forEach((f, i) => {
@@ -443,9 +443,17 @@ async function exportTablePdf(
   const { doc, pageW, pageH, headerH, liveUData } = await buildPdfBase("portrait", `Timing Detail — ${monthName} ${year}`, filename);
 
   const margin = 10;
+
+  // Sort: employee name first, then day ascending (start → end of month)
+  const sortedRows = [...filteredTableRows].sort((a, b) => {
+    const empCmp = a.employeeName.localeCompare(b.employeeName);
+    if (empCmp !== 0) return empCmp;
+    return a.day - b.day;
+  });
+
   const headers = ["Date", "Day", "Employee", "Emp ID", "Status", "In Time", "Out Time", "Work Hrs", "OT Hrs"];
-  const body = filteredTableRows.map(r => [
-    `${r.day} ${monthName} ${year}`,
+  const body = sortedRows.map(r => [
+    `${String(r.day).padStart(2,"0")} ${monthName} ${year}`,
     r.dayName,
     r.employeeName,
     r.employeeCode,
@@ -492,19 +500,46 @@ async function exportTablePdf(
       7: { cellWidth: 18, halign: "center", textColor: [29, 78, 216]  },
       8: { cellWidth: 15, halign: "center", textColor: [194, 65, 12]  },
     },
-    alternateRowStyles: { fillColor: [247, 250, 255] },
-    bodyStyles:         { fillColor: [255, 255, 255] },
-    didParseCell: (data: any) => {
-      if (data.section === "body" && data.column.index === 4) {
-        const v = String(data.cell.raw || "");
-        if (v === "Present")  data.cell.styles.textColor = [21, 128, 61];
-        if (v === "Late")     data.cell.styles.textColor = [146, 64, 14];
-        if (v === "Absent")   data.cell.styles.textColor = [185, 28, 28];
-        if (v === "Half Day") data.cell.styles.textColor = [113, 63, 18];
-        if (v === "Leave")    data.cell.styles.textColor = [29, 78, 216];
-        if (v === "Holiday")  data.cell.styles.textColor = [100, 100, 120];
-      }
-    },
+    bodyStyles: { fillColor: [255, 255, 255] },
+    // Build an array of row indices where a new employee group starts
+    didParseCell: (() => {
+      // Pre-compute employee group boundaries
+      const empGroupStart: boolean[] = sortedRows.map((r, i) =>
+        i === 0 || r.employeeCode !== sortedRows[i - 1].employeeCode
+      );
+      // Alternate fill per employee group
+      let groupIdx = -1;
+      let lastEmp = "";
+      const fills: [number,number,number][] = [[255,255,255],[247,250,255]];
+      const rowFill: [number,number,number][] = sortedRows.map(r => {
+        if (r.employeeCode !== lastEmp) { groupIdx++; lastEmp = r.employeeCode; }
+        return fills[groupIdx % 2];
+      });
+      return (data: any) => {
+        if (data.section === "body") {
+          const ri = data.row.index;
+          // Alternating fill per employee group
+          data.cell.styles.fillColor = rowFill[ri];
+          // Top border at start of each employee group
+          if (empGroupStart[ri]) {
+            data.cell.styles.lineColor = [22, 48, 110];
+            data.cell.styles.lineWidth = { top: 0.6, bottom: 0.1, left: 0, right: 0 };
+          }
+          // Status column colour
+          if (data.column.index === 4) {
+            const v = String(data.cell.raw || "");
+            if (v === "Present")  data.cell.styles.textColor = [21, 128, 61];
+            if (v === "Late")     data.cell.styles.textColor = [146, 64, 14];
+            if (v === "Absent")   data.cell.styles.textColor = [185, 28, 28];
+            if (v === "Half Day") data.cell.styles.textColor = [113, 63, 18];
+            if (v === "Leave")    data.cell.styles.textColor = [29, 78, 216];
+            if (v === "Holiday")  data.cell.styles.textColor = [100, 100, 120];
+          }
+          // Sunday row tint
+          if (sortedRows[ri]?.isSun) data.cell.styles.fillColor = [254, 242, 242];
+        }
+      };
+    })(),
     showHead: "everyPage",
     rowPageBreak: "avoid",
   });
