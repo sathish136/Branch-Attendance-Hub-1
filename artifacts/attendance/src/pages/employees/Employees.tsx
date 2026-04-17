@@ -226,7 +226,7 @@ function DocUploadRow({
 // ── Employee Profile Drawer ────────────────────────────────────────────────────
 const EMPTY_EMP = {
   employeeId:"", firstName:"", lastName:"", gender:"male", dateOfBirth:"", phone:"", email:"",
-  address:"", aadharNumber:"", panNumber:"",
+  address:"", nicNumber:"", passportNumber:"",
   designation:"", department:"", branchId:1, shiftId:"", joiningDate:"",
   employeeType:"permanent", reportingManagerId:"", biometricId:"", status:"active",
 };
@@ -246,8 +246,8 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
     dateOfBirth: emp.dateOfBirth || "",
     shiftId: emp.shiftId || "",
     reportingManagerId: emp.reportingManagerId || "",
-    aadharNumber: emp.aadharNumber || "",
-    panNumber: emp.panNumber || "",
+    nicNumber: emp.nicNumber || "",
+    passportNumber: emp.passportNumber || "",
   } : { ...EMPTY_EMP });
   const [photoPreview, setPhotoPreview] = useState<string>(emp?.photoUrl || "");
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -363,21 +363,22 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
           </div>
 
           {/* Step Tabs */}
-          <div className="flex gap-2 mt-4">
-            {DRAWER_TABS.map(({ key, label, icon: Icon, step }) => (
+          <div className="flex mt-4 border border-border rounded-xl overflow-hidden bg-muted/30">
+            {DRAWER_TABS.map(({ key, label, icon: Icon, step }, idx) => (
               <button key={key} onClick={() => setTab(key)}
                 className={cn(
-                  "flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 flex-1 justify-center",
+                  "flex items-center gap-2 py-2.5 text-xs font-semibold transition-all duration-200 flex-1 justify-center relative",
+                  idx !== 0 && "border-l border-border",
                   tab === key
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground bg-transparent"
                 )}>
                 <span className={cn(
-                  "w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0",
-                  tab === key ? "bg-white/20" : "bg-background"
+                  "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 border",
+                  tab === key ? "bg-white/20 border-white/30 text-white" : "bg-background border-border text-muted-foreground"
                 )}>{step}</span>
                 <Icon className="w-3.5 h-3.5" />
-                {label}
+                <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
           </div>
@@ -493,22 +494,24 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
               <div className="rounded-xl border border-primary/20 bg-primary/5 overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2.5 bg-primary/10 border-b border-primary/20">
                   <Shield className="w-3.5 h-3.5 text-primary" />
-                  <span className="text-[11px] font-bold text-primary uppercase tracking-widest">Government Identity</span>
+                  <span className="text-[11px] font-bold text-primary uppercase tracking-widest">National Identity</span>
                 </div>
                 <div className="grid grid-cols-2 gap-4 p-4">
                   <div>
-                    <Label className="text-xs font-semibold mb-1.5 block">Aadhar Number</Label>
+                    <Label className="text-xs font-semibold mb-1.5 block">NIC Number</Label>
                     <div className="relative">
                       <IdCard className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                      <Input className="pl-8 font-mono tracking-wider" placeholder="XXXX XXXX XXXX" value={form.aadharNumber} onChange={e => set("aadharNumber", e.target.value)} maxLength={14} />
+                      <Input className="pl-8 font-mono tracking-wider uppercase" placeholder="XXXXXXXXXX V / XXXXXXXXXXXX" value={form.nicNumber} onChange={e => set("nicNumber", e.target.value.toUpperCase())} maxLength={12} />
                     </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">National Identity Card (old: 9+V, new: 12 digits)</p>
                   </div>
                   <div>
-                    <Label className="text-xs font-semibold mb-1.5 block">PAN Number</Label>
+                    <Label className="text-xs font-semibold mb-1.5 block">Passport Number</Label>
                     <div className="relative">
                       <CreditCard className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                      <Input className="pl-8 font-mono tracking-wider uppercase" placeholder="ABCDE1234F" value={form.panNumber} onChange={e => set("panNumber", e.target.value.toUpperCase())} maxLength={10} />
+                      <Input className="pl-8 font-mono tracking-wider uppercase" placeholder="N XXXXXXX" value={form.passportNumber} onChange={e => set("passportNumber", e.target.value.toUpperCase())} maxLength={10} />
                     </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">Sri Lanka Passport (optional)</p>
                   </div>
                 </div>
               </div>
@@ -636,16 +639,16 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
               ) : (
                 <>
                   <p className="text-xs text-muted-foreground">Upload documents in PDF, JPG, PNG, or DOC format (max 10MB each).</p>
-                  <DocUploadRow label="Aadhar Card" fieldName="aadharDoc" currentUrl={emp?.aadharDocUrl} empId={emp?.id} onUploaded={onSaved} />
-                  <DocUploadRow label="PAN Card" fieldName="panDoc" currentUrl={emp?.panDocUrl} empId={emp?.id} onUploaded={onSaved} />
+                  <DocUploadRow label="NIC Copy" fieldName="aadharDoc" currentUrl={emp?.aadharDocUrl} empId={emp?.id} onUploaded={onSaved} />
+                  <DocUploadRow label="Passport Copy" fieldName="panDoc" currentUrl={emp?.panDocUrl} empId={emp?.id} onUploaded={onSaved} />
                   <DocUploadRow label="Certificates" fieldName="certificatesDoc" currentUrl={emp?.certificatesDocUrl} empId={emp?.id} onUploaded={onSaved} />
                   <DocUploadRow label="Resume / CV" fieldName="resumeDoc" currentUrl={emp?.resumeDocUrl} empId={emp?.id} onUploaded={onSaved} />
                   <div className="rounded-lg bg-muted/50 p-3 mt-2">
                     <p className="text-xs font-medium mb-1.5">Document Status</p>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: "Aadhar Card", url: emp?.aadharDocUrl },
-                        { label: "PAN Card", url: emp?.panDocUrl },
+                        { label: "NIC Copy", url: emp?.aadharDocUrl },
+                        { label: "Passport Copy", url: emp?.panDocUrl },
                         { label: "Certificates", url: emp?.certificatesDocUrl },
                         { label: "Resume / CV", url: emp?.resumeDocUrl },
                       ].map(doc => (
@@ -905,19 +908,19 @@ export default function Employees() {
     return list.filter((e: any) =>
       empDisplayName(e).toLowerCase().includes(s) ||
       e.employeeId.toLowerCase().includes(s) ||
-      (e.aadharNumber || "").replace(/\s/g,"").includes(s.replace(/\s/g,"")) ||
-      (e.panNumber || "").toLowerCase().includes(s) ||
+      (e.nicNumber || "").replace(/\s/g,"").includes(s.replace(/\s/g,"")) ||
+      (e.passportNumber || "").toLowerCase().includes(s) ||
       (e.email || "").toLowerCase().includes(s)
     );
   }, [allEmployees, search, filterBranchId, regionalBranchIds]);
 
   function exportCSV() {
-    const headers = ["Employee ID","First Name","Last Name","Gender","Designation","Department","Branch","Type","Status","Phone","Email","Aadhar","PAN","Joining Date"];
+    const headers = ["Employee ID","First Name","Last Name","Gender","Designation","Department","Branch","Type","Status","Phone","Email","NIC","Passport","Joining Date"];
     const rows = employees.map((e: any) => [
       e.employeeId, e.firstName || "", e.lastName || e.fullName || "",
       e.gender, e.designation, e.department,
       e.branchName, e.employeeType, e.status, e.phone, e.email,
-      e.aadharNumber || "", e.panNumber || "", e.joiningDate
+      e.nicNumber || "", e.passportNumber || "", e.joiningDate
     ]);
     const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(",")).join("\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
@@ -936,23 +939,25 @@ export default function Employees() {
 
       {/* Tab Bar */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 p-1 bg-muted/60 rounded-xl border border-border">
-          {TABS.map(t => (
-            <button key={t} onClick={() => setActiveTab(t)}
+        <div className="flex items-center border-b border-border gap-0">
+          {([
+            { key: "Employee List", icon: Users, color: "text-blue-600 border-blue-600" },
+            { key: "Departments",   icon: Building2, color: "text-purple-600 border-purple-600" },
+            { key: "Designations",  icon: Layers, color: "text-emerald-600 border-emerald-600" },
+          ] as const).map(({ key: t, icon: Icon, color }) => (
+            <button key={t} onClick={() => setActiveTab(t as Tab)}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-200",
+                "flex items-center gap-2 px-5 py-2.5 text-xs font-semibold transition-all duration-200 border-b-2 -mb-px whitespace-nowrap",
                 activeTab === t
-                  ? "bg-background text-primary shadow-sm border border-border"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                  ? cn("bg-transparent", color)
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
               )}>
-              {t === "Employee List" && <Users className="w-3.5 h-3.5" />}
-              {t === "Departments" && <Building2 className="w-3.5 h-3.5" />}
-              {t === "Designations" && <Layers className="w-3.5 h-3.5" />}
+              <Icon className="w-3.5 h-3.5" />
               {t}
               {t === "Employee List" && (
                 <span className={cn(
                   "ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold tabular-nums",
-                  activeTab === t ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                  activeTab === t ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"
                 )}>{allEmployees.length}</span>
               )}
             </button>
@@ -977,7 +982,7 @@ export default function Employees() {
           <Card className="p-3 flex flex-wrap gap-2 items-center">
             <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <Input placeholder="Search name, ID, Aadhar, PAN, email..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-8 text-xs" />
+              <Input placeholder="Search name, ID, NIC, Passport, email..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-8 text-xs" />
             </div>
             <Select
               value={filterRegionalId}
@@ -1038,7 +1043,7 @@ export default function Employees() {
                 <table className="w-full text-xs">
                   <thead className="bg-muted/50 sticky top-0">
                     <tr>
-                      {["Emp ID","Name","Designation / Dept","Branch","Type","Aadhar / PAN","Status","Actions"].map(h => (
+                      {["Emp ID","Name","Designation / Dept","Branch","Type","NIC / Passport","Status","Actions"].map(h => (
                         <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -1076,8 +1081,8 @@ export default function Employees() {
                           </span>
                         </td>
                         <td className="px-3 py-2.5 font-mono text-muted-foreground text-xs">
-                          <div>{emp.aadharNumber || "—"}</div>
-                          {emp.panNumber && <div className="text-primary">{emp.panNumber}</div>}
+                          <div>{emp.nicNumber || "—"}</div>
+                          {emp.passportNumber && <div className="text-primary">{emp.passportNumber}</div>}
                         </td>
                         <td className="px-3 py-2.5">
                           <span className={cn("px-2 py-0.5 rounded text-xs font-medium", STATUS_STYLE[emp.status] || STATUS_STYLE.active)}>
