@@ -138,7 +138,7 @@ function ExportButtons({
       doc.setFontSize(7);
       doc.setTextColor(120, 120, 140);
       const poweredX = liveUImgData ? pageW / 2 - 11 : pageW / 2;
-      doc.text("Powered by  Live U (Pvt) Ltd", poweredX, pageH - 6, { align: "left" });
+      doc.text("Powered by  Live U (Pvt) Ltd, Sri Lanka", poweredX, pageH - 6, { align: "left" });
 
       // Page number on right
       doc.setTextColor(150);
