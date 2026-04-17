@@ -4,7 +4,7 @@ import {
   useListEmployees, useCreateEmployee, useUpdateEmployee, useDeleteEmployee,
   useListBranches
 } from "@workspace/api-client-react";
-import { PageHeader, Card, Button, Input, Label, Select, useConfirm } from "@/components/ui";
+import { Card, Button, Input, Label, Select, useConfirm } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
   Search, Plus, Edit2, Trash2, Download, Mail,
@@ -867,11 +867,45 @@ export default function Employees() {
     a.download = "employees.csv"; a.click();
   }
 
+  const total      = allEmployees.length;
+  const active     = allEmployees.filter(e => e.status === "active").length;
+  const onLeave    = allEmployees.filter(e => e.status === "on_leave").length;
+  const terminated = allEmployees.filter(e => e.status === "terminated").length;
+  const permanent  = allEmployees.filter(e => e.employeeType === "permanent").length;
+
   return (
     <div className="space-y-4">
-      <PageHeader title="Employee Management" description="Manage staff profiles, departments, and designations." />
 
-      {/* Mini Dashboard */}
+      {/* Rich Page Header */}
+      <div className="flex items-center justify-between gap-4 bg-card border border-border rounded-2xl px-6 py-4 shadow-sm">
+        <div>
+          <div className="flex items-center gap-2 mb-0.5">
+            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Users className="w-4 h-4 text-primary" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight">Employee Management</h1>
+          </div>
+          <p className="text-xs text-muted-foreground ml-10">Manage staff profiles, departments, and designations.</p>
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0">
+          {[
+            { label: "Total Staff",  val: total,      bg: "bg-blue-50",   border: "border-blue-200",   num: "text-blue-700",   sub: "text-blue-500",   icon: Users },
+            { label: "Active",       val: active,     bg: "bg-green-50",  border: "border-green-200",  num: "text-green-700",  sub: "text-green-500",  icon: CheckCircle2 },
+            { label: "On Leave",     val: onLeave,    bg: "bg-yellow-50", border: "border-yellow-200", num: "text-yellow-700", sub: "text-yellow-500", icon: Calendar },
+            { label: "Terminated",   val: terminated, bg: "bg-red-50",    border: "border-red-200",    num: "text-red-700",    sub: "text-red-400",    icon: AlertCircle },
+            { label: "Permanent",    val: permanent,  bg: "bg-purple-50", border: "border-purple-200", num: "text-purple-700", sub: "text-purple-400", icon: Briefcase },
+          ].map(({ label, val, bg, border, num, sub, icon: Icon }) => (
+            <div key={label} className={cn("flex flex-col items-center px-4 py-2.5 rounded-xl border min-w-[76px]", bg, border)}>
+              <Icon className={cn("w-3.5 h-3.5 mb-1", sub)} />
+              <span className={cn("text-xl font-extrabold leading-none tabular-nums", num)}>{val}</span>
+              <span className={cn("text-[10px] font-medium mt-0.5", sub)}>{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Mini Stats Strip */}
       <EmployeeMiniDashboard
         allEmployees={allEmployees}
         onFilter={status => { setFilterStatus(status); setActiveTab("Employee List"); }}
