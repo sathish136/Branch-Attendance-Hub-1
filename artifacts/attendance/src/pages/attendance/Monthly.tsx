@@ -455,10 +455,12 @@ async function exportTablePdf(
 
   const margin = 10;
 
-  // Sort: employee name first, then day ascending (start → end of month)
+  // Sort: employee name → employee code → day (keeps each code's records together)
   const sortedRows = [...filteredTableRows].sort((a, b) => {
     const empCmp = a.employeeName.localeCompare(b.employeeName);
     if (empCmp !== 0) return empCmp;
+    const codeCmp = a.employeeCode.localeCompare(b.employeeCode);
+    if (codeCmp !== 0) return codeCmp;
     return a.day - b.day;
   });
 
