@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import {
-  Download, Calendar as CalendarIcon, Clock,
+  Calendar as CalendarIcon, Clock,
   LayoutGrid, List, ChevronUp, ChevronDown,
   FileText, Sheet,
 } from "lucide-react";
@@ -32,7 +32,6 @@ function fmtHrs(h: number | null | undefined) {
   const mins = Math.round((h - hrs) * 60);
   return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
 }
-
 const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 function getDayName(year: number, month: number, day: number) {
   return DAY_NAMES[new Date(year, month - 1, day).getDay()];
@@ -41,7 +40,7 @@ function isSunday(year: number, month: number, day: number) {
   return new Date(year, month - 1, day).getDay() === 0;
 }
 
-// ── Shared PDF helpers ────────────────────────────────────────────────────────
+// ── PDF helpers ───────────────────────────────────────────────────────────────
 async function toDataUrl(url: string): Promise<string> {
   const res  = await fetch(url);
   const blob = await res.blob();
@@ -51,143 +50,339 @@ async function toDataUrl(url: string): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
-function getImageDimensions(dataUrl: string): Promise<{ w: number; h: number }> {
+function getImageDimensions(src: string): Promise<{ w: number; h: number }> {
   return new Promise(resolve => {
     const img = new Image();
     img.onload  = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
     img.onerror = () => resolve({ w: 1, h: 1 });
-    img.src = dataUrl;
+    img.src = src;
   });
 }
 
-// ── Export Buttons ────────────────────────────────────────────────────────────
-function ExportButtons({
-  getHeaders, getRows, filename, orientation = "landscape", disabled,
-}: {
-  getHeaders: () => string[];
-  getRows: () => (string | number | null | undefined)[][];
-  filename: string;
-  orientation?: "landscape" | "portrait";
-  disabled?: boolean;
-}) {
-  async function handlePdf() {
-    const { default: jsPDF }     = await import("jspdf");
-    const { default: autoTable } = await import("jspdf-autotable");
-    const doc   = new jsPDF({ orientation });
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
+async function buildPdfBase(orientation: "landscape" | "portrait", title: string, filename: string) {
+  const { default: jsPDF } = await import("jspdf");
+  const doc   = new jsPDF({ orientation, format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
 
-    let slpImgData:   string | null = null;
-    let liveUImgData: string | null = null;
-    try {
-      slpImgData   = await toDataUrl("https://upload.wikimedia.org/wikipedia/en/c/c1/Sri_Lanka_Post_logo.png");
-      liveUImgData = await toDataUrl("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQCzrc0k5wmNzmItazY38yj1_7K5zAFLMxn-Q&s");
-    } catch { /* proceed without logos */ }
+  let slpData:   string | null = null;
+  let liveUData: string | null = null;
+  try {
+    slpData   = await toDataUrl("https://upload.wikimedia.org/wikipedia/en/c/c1/Sri_Lanka_Post_logo.png");
+    liveUData = await toDataUrl("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQCzrc0k5wmNzmItazY38yj1_7K5zAFLMxn-Q&s");
+  } catch { /* no logos */ }
 
-    const maxLogoH = 20;
-    let logoW = maxLogoH, logoH = maxLogoH;
-    if (slpImgData) {
-      const dims = await getImageDimensions(slpImgData);
-      logoH = maxLogoH;
-      logoW = maxLogoH * (dims.w / dims.h);
-    }
+  const maxLogoH = 18;
+  let logoW = maxLogoH, logoH = maxLogoH;
+  if (slpData) {
+    const dims = await getImageDimensions(slpData);
+    logoH = maxLogoH;
+    logoW = maxLogoH * (dims.w / dims.h);
+  }
 
-    const logoY = 5;
-    const logoX = pageW / 2 - logoW / 2;
-    if (slpImgData) doc.addImage(slpImgData, "PNG", logoX, logoY, logoW, logoH);
+  const logoY = 5;
+  if (slpData) doc.addImage(slpData, "PNG", pageW / 2 - logoW / 2, logoY, logoW, logoH);
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.setTextColor(30, 58, 138);
-    doc.text("Sri Lanka Post — Colombo District", pageW / 2, logoY + logoH + 5, { align: "center" });
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(30, 58, 138);
+  doc.text("Sri Lanka Post — Colombo District", pageW / 2, logoY + logoH + 5, { align: "center" });
 
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 120);
+  const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+  doc.text(`${title}   |   Generated: ${today}`, pageW / 2, logoY + logoH + 10.5, { align: "center" });
+
+  const headerH = logoY + logoH + 15;
+  doc.setDrawColor(30, 58, 138);
+  doc.setLineWidth(0.5);
+  doc.line(8, headerH, pageW - 8, headerH);
+
+  return { doc, pageW, pageH, headerH, liveUData, filename };
+}
+
+function addPdfFooters(doc: any, pageH: number, pageW: number, liveUData: string | null) {
+  const count = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= count; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(200, 210, 230);
+    doc.setLineWidth(0.3);
+    doc.line(8, pageH - 11, pageW - 8, pageH - 11);
+    if (liveUData) doc.addImage(liveUData, "JPEG", pageW / 2 - 18, pageH - 9.5, 5.5, 5.5);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(100, 100, 120);
-    const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
-    doc.text(`${filename}   |   Generated: ${today}`, pageW / 2, logoY + logoH + 11, { align: "center" });
-
-    const headerH = logoY + logoH + 16;
-    doc.setDrawColor(30, 58, 138);
-    doc.setLineWidth(0.5);
-    doc.line(10, headerH, pageW - 10, headerH);
-
-    autoTable(doc, {
-      head: [getHeaders()],
-      body: getRows().map(r => r.map(v => String(v ?? ""))),
-      startY: headerH + 4,
-      margin: { left: 10, right: 10 },
-      tableWidth: "auto",
-      styles: {
-        fontSize: 7.5,
-        cellPadding: { top: 3.5, bottom: 3.5, left: 4, right: 4 },
-        font: "helvetica",
-        textColor: [40, 40, 60],
-        lineColor: [220, 228, 240],
-        lineWidth: 0.25,
-        overflow: "linebreak",
-        minCellHeight: 9,
-      },
-      headStyles: {
-        fillColor: [22, 48, 110],
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-        fontSize: 8,
-        cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
-        halign: "center",
-        lineWidth: 0,
-      },
-      alternateRowStyles: { fillColor: [245, 248, 255] },
-      bodyStyles:         { fillColor: [255, 255, 255] },
-      columnStyles:       { 0: { halign: "left", fontStyle: "bold", textColor: [22, 48, 110] } },
-      didParseCell: data => {
-        if (data.section === "head") data.cell.styles.halign = "center";
-        if (data.section === "body" && data.column.index !== 0)
-          data.cell.styles.halign = "center";
-      },
-      showHead: "everyPage",
-      rowPageBreak: "avoid",
-    });
-
-    const pageCount = (doc as any).internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setDrawColor(200, 210, 230);
-      doc.setLineWidth(0.3);
-      doc.line(10, pageH - 12, pageW - 10, pageH - 12);
-      if (liveUImgData) doc.addImage(liveUImgData, "JPEG", pageW / 2 - 18, pageH - 10, 6, 6);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(7);
-      doc.setTextColor(120, 120, 140);
-      const poweredX = liveUImgData ? pageW / 2 - 11 : pageW / 2;
-      doc.text("Powered by  Live U (Pvt) Ltd, Sri Lanka", poweredX, pageH - 6, { align: "left" });
-      doc.setTextColor(150);
-      doc.text(`Page ${i} of ${pageCount}`, pageW - 10, pageH - 6, { align: "right" });
-    }
-
-    doc.save(`${filename}.pdf`);
+    doc.setFontSize(6.5);
+    doc.setTextColor(120, 120, 140);
+    const px = liveUData ? pageW / 2 - 11 : pageW / 2;
+    doc.text("Powered by  Live U (Pvt) Ltd, Sri Lanka", px, pageH - 5.5, { align: "left" });
+    doc.setTextColor(150);
+    doc.text(`Page ${i} of ${count}`, pageW - 8, pageH - 5.5, { align: "right" });
   }
+}
 
-  async function handleExcel() {
-    const XLSX = await import("xlsx");
-    const ws = XLSX.utils.aoa_to_sheet([getHeaders(), ...getRows().map(r => r.map(v => v ?? ""))]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Sheet");
-    XLSX.writeFile(wb, `${filename}.xlsx`);
-  }
+// ── Grid PDF  — status codes only, computed narrow column widths ───────────────
+async function exportGridPdf(
+  rows: any[],
+  daysArray: number[],
+  year: number,
+  month: number,
+  monthName: string,
+  filename: string,
+) {
+  const { default: autoTable } = await import("jspdf-autotable");
+  const { doc, pageW, pageH, headerH, liveUData } = await buildPdfBase("landscape", `Monthly Attendance Register — ${monthName} ${year}`, filename);
 
-  return (
-    <div className="flex items-center gap-1.5">
-      <button onClick={handlePdf} disabled={disabled}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-40">
-        <FileText className="w-3.5 h-3.5" /> PDF
-      </button>
-      <button onClick={handleExcel} disabled={disabled}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg transition-colors disabled:opacity-40">
-        <Sheet className="w-3.5 h-3.5" /> Excel
-      </button>
-    </div>
-  );
+  const margin = 8;
+  const contentW = pageW - margin * 2;
+
+  // Fixed column widths (mm)
+  const empW  = 40;
+  const codeW = 15;
+  const pW    = 8;
+  const aW    = 8;
+  const lW    = 8;
+  const thrW  = 15;
+  const otW   = 13;
+  const fixedW = empW + codeW + pW + aW + lW + thrW + otW;
+  const dayW  = Math.max(5, (contentW - fixedW) / daysArray.length);
+
+  // Build column styles
+  const colStyles: Record<number, any> = {
+    0: { cellWidth: empW,  halign: "left", fontStyle: "bold", textColor: [22, 48, 110] },
+    1: { cellWidth: codeW, halign: "center", textColor: [80, 80, 100], fontSize: 6 },
+  };
+  daysArray.forEach((_, i) => {
+    colStyles[2 + i] = { cellWidth: dayW, halign: "center", cellPadding: { top: 1.5, bottom: 1.5, left: 0.5, right: 0.5 } };
+  });
+  const base = 2 + daysArray.length;
+  colStyles[base]   = { cellWidth: pW,   halign: "center", fontStyle: "bold", textColor: [21, 128, 61]  };
+  colStyles[base+1] = { cellWidth: aW,   halign: "center", fontStyle: "bold", textColor: [185, 28, 28]  };
+  colStyles[base+2] = { cellWidth: lW,   halign: "center", fontStyle: "bold", textColor: [146, 64, 14]  };
+  colStyles[base+3] = { cellWidth: thrW, halign: "center", fontStyle: "bold", textColor: [29, 78, 216]  };
+  colStyles[base+4] = { cellWidth: otW,  halign: "center", fontStyle: "bold", textColor: [194, 65, 12]  };
+
+  const headers = [
+    "Employee", "ID",
+    ...daysArray.map(d => String(d)),
+    "P", "A", "L", "Hrs", "OT",
+  ];
+
+  const body = rows.map((row: any) => [
+    row.employeeName,
+    row.employeeCode,
+    ...daysArray.map(day => {
+      const e  = row.dailyStatus?.find((d: any) => d.day === day);
+      const st = e?.status || "absent";
+      return (STATUS_CFG[st] || STATUS_CFG.absent).abbr;
+    }),
+    row.presentDays  ?? 0,
+    row.absentDays   ?? 0,
+    row.lateDays     ?? 0,
+    fmtHrs(row.totalWorkHours),
+    row.overtimeHours > 0 ? fmtHrs(row.overtimeHours) : "—",
+  ]);
+
+  autoTable(doc, {
+    head: [headers],
+    body,
+    startY: headerH + 3,
+    margin: { left: margin, right: margin },
+    tableWidth: contentW,
+    styles: {
+      fontSize: 6.5,
+      cellPadding: { top: 2, bottom: 2, left: 1.5, right: 1.5 },
+      font: "helvetica",
+      textColor: [40, 40, 60],
+      lineColor: [210, 220, 235],
+      lineWidth: 0.2,
+      minCellHeight: 7,
+      overflow: "hidden",
+    },
+    headStyles: {
+      fillColor: [22, 48, 110],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 6.5,
+      cellPadding: { top: 2.5, bottom: 2.5, left: 1, right: 1 },
+      halign: "center",
+      lineWidth: 0,
+      minCellHeight: 8,
+    },
+    columnStyles: colStyles,
+    alternateRowStyles: { fillColor: [247, 250, 255] },
+    bodyStyles:         { fillColor: [255, 255, 255] },
+    didParseCell: (data: any) => {
+      // Highlight Sundays in red tint
+      const dayIdx = data.column.index - 2;
+      if (dayIdx >= 0 && dayIdx < daysArray.length) {
+        const day = daysArray[dayIdx];
+        if (isSunday(year, month, day)) {
+          if (data.section === "head") data.cell.styles.fillColor = [127, 29, 29];
+          if (data.section === "body") data.cell.styles.fillColor = [254, 242, 242];
+        }
+        // Color code status cells
+        if (data.section === "body") {
+          const v = String(data.cell.raw || "");
+          if (v === "P")  data.cell.styles.textColor = [21, 128, 61];
+          if (v === "L")  data.cell.styles.textColor = [146, 64, 14];
+          if (v === "A")  data.cell.styles.textColor = [185, 28, 28];
+          if (v === "HD") data.cell.styles.textColor = [113, 63, 18];
+          if (v === "LV") data.cell.styles.textColor = [29, 78, 216];
+          if (v === "H")  data.cell.styles.textColor = [100, 100, 120];
+        }
+      }
+    },
+    showHead: "everyPage",
+    rowPageBreak: "avoid",
+  });
+
+  // Legend at bottom of last page
+  const lastY = (doc as any).lastAutoTable.finalY + 4;
+  doc.setFontSize(6.5);
+  doc.setTextColor(80, 80, 100);
+  const legend = [
+    ["P = Present", "A = Absent", "L = Late", "HD = Half Day", "LV = Leave", "H = Holiday"],
+  ];
+  const colors: Record<string, [number, number, number]> = {
+    "P = Present":  [21, 128, 61],
+    "A = Absent":   [185, 28, 28],
+    "L = Late":     [146, 64, 14],
+    "HD = Half Day":[113, 63, 18],
+    "LV = Leave":   [29, 78, 216],
+    "H = Holiday":  [100, 100, 120],
+  };
+  let lx = margin;
+  legend[0].forEach(item => {
+    doc.setTextColor(...colors[item]);
+    doc.text(item, lx, lastY);
+    lx += 32;
+  });
+
+  addPdfFooters(doc, pageH, pageW, liveUData);
+  doc.save(`${filename}.pdf`);
+}
+
+// ── Table PDF — timing detail, portrait ───────────────────────────────────────
+async function exportTablePdf(
+  filteredTableRows: any[],
+  monthName: string,
+  year: number,
+  filename: string,
+) {
+  const { default: autoTable } = await import("jspdf-autotable");
+  const { doc, pageW, pageH, headerH, liveUData } = await buildPdfBase("portrait", `Timing Detail — ${monthName} ${year}`, filename);
+
+  const margin = 10;
+  const headers = ["Date", "Day", "Employee", "Emp ID", "Status", "In Time", "Out Time", "Work Hrs", "OT Hrs"];
+  const body = filteredTableRows.map(r => [
+    `${r.day} ${monthName} ${year}`,
+    r.dayName,
+    r.employeeName,
+    r.employeeCode,
+    STATUS_CFG[r.status]?.label || r.status,
+    fmtTime(r.inTime)  || "—",
+    fmtTime(r.outTime) || "—",
+    fmtHrs(r.hours),
+    r.ot && r.ot > 0 ? fmtHrs(r.ot) : "—",
+  ]);
+
+  autoTable(doc, {
+    head: [headers],
+    body,
+    startY: headerH + 4,
+    margin: { left: margin, right: margin },
+    tableWidth: pageW - margin * 2,
+    styles: {
+      fontSize: 8,
+      cellPadding: { top: 3.5, bottom: 3.5, left: 4, right: 4 },
+      font: "helvetica",
+      textColor: [40, 40, 60],
+      lineColor: [220, 228, 240],
+      lineWidth: 0.25,
+      minCellHeight: 10,
+      overflow: "linebreak",
+    },
+    headStyles: {
+      fillColor: [22, 48, 110],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 8.5,
+      cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
+      halign: "center",
+      lineWidth: 0,
+    },
+    columnStyles: {
+      0: { cellWidth: 28, halign: "center" },
+      1: { cellWidth: 12, halign: "center", textColor: [100, 100, 120] },
+      2: { cellWidth: 40, halign: "left", fontStyle: "bold", textColor: [22, 48, 110] },
+      3: { cellWidth: 18, halign: "center", textColor: [80, 80, 100] },
+      4: { cellWidth: 20, halign: "center" },
+      5: { cellWidth: 22, halign: "center", textColor: [21, 128, 61]  },
+      6: { cellWidth: 22, halign: "center", textColor: [185, 28, 28] },
+      7: { cellWidth: 18, halign: "center", textColor: [29, 78, 216]  },
+      8: { cellWidth: 15, halign: "center", textColor: [194, 65, 12]  },
+    },
+    alternateRowStyles: { fillColor: [247, 250, 255] },
+    bodyStyles:         { fillColor: [255, 255, 255] },
+    didParseCell: (data: any) => {
+      if (data.section === "body" && data.column.index === 4) {
+        const v = String(data.cell.raw || "");
+        if (v === "Present")  data.cell.styles.textColor = [21, 128, 61];
+        if (v === "Late")     data.cell.styles.textColor = [146, 64, 14];
+        if (v === "Absent")   data.cell.styles.textColor = [185, 28, 28];
+        if (v === "Half Day") data.cell.styles.textColor = [113, 63, 18];
+        if (v === "Leave")    data.cell.styles.textColor = [29, 78, 216];
+        if (v === "Holiday")  data.cell.styles.textColor = [100, 100, 120];
+      }
+    },
+    showHead: "everyPage",
+    rowPageBreak: "avoid",
+  });
+
+  addPdfFooters(doc, pageH, pageW, liveUData);
+  doc.save(`${filename}.pdf`);
+}
+
+// ── Excel export ──────────────────────────────────────────────────────────────
+async function exportGridExcel(rows: any[], daysArray: number[], year: number, month: number, monthName: string, filename: string) {
+  const XLSX = await import("xlsx");
+  const headers = ["Employee", "Emp ID", "Designation", ...daysArray.map(d => `${d} ${getDayName(year, month, d)}`), "Present", "Absent", "Late", "Total Hrs", "OT Hrs"];
+  const body = rows.map((row: any) => [
+    row.employeeName, row.employeeCode, row.designation,
+    ...daysArray.map(day => {
+      const e = row.dailyStatus?.find((d: any) => d.day === day);
+      const st = e?.status || "absent";
+      const cfg = STATUS_CFG[st] || STATUS_CFG.absent;
+      if (!e || st === "absent") return cfg.abbr;
+      const parts = [cfg.abbr];
+      if (e.inTime)  parts.push(`In: ${fmtTime(e.inTime)}`);
+      if (e.outTime) parts.push(`Out: ${fmtTime(e.outTime)}`);
+      if (e.hours != null) parts.push(fmtHrs(e.hours));
+      return parts.join(" | ");
+    }),
+    row.presentDays ?? 0, row.absentDays ?? 0, row.lateDays ?? 0,
+    fmtHrs(row.totalWorkHours),
+    row.overtimeHours > 0 ? fmtHrs(row.overtimeHours) : "—",
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `${monthName} ${year}`);
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+}
+
+async function exportTableExcel(filteredTableRows: any[], monthName: string, year: number, filename: string) {
+  const XLSX = await import("xlsx");
+  const headers = ["Date", "Day", "Employee", "Emp ID", "Designation", "Status", "In Time", "Out Time", "Work Hrs", "OT Hrs"];
+  const body = filteredTableRows.map(r => [
+    `${r.day} ${monthName} ${year}`, r.dayName, r.employeeName, r.employeeCode, r.designation,
+    STATUS_CFG[r.status]?.label || r.status,
+    fmtTime(r.inTime) || "—", fmtTime(r.outTime) || "—",
+    fmtHrs(r.hours), r.ot && r.ot > 0 ? fmtHrs(r.ot) : "—",
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `${monthName} ${year}`);
+  XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -200,6 +395,7 @@ export default function MonthlySheet() {
   const [sortAsc, setSortAsc]     = useState(true);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterEmp, setFilterEmp]       = useState("all");
+  const [exporting, setExporting] = useState(false);
 
   const { data, isLoading } = useMonthlySheet({ month, year });
 
@@ -210,24 +406,17 @@ export default function MonthlySheet() {
   const monthName   = new Date(2000, month - 1, 1).toLocaleString("default", { month: "long" });
   const filename    = `Monthly-Attendance-${monthName}-${year}`;
 
-  // Flattened per-day rows for Table view
   const tableRows = useMemo(() => {
     const flat: any[] = [];
     rows.forEach((row: any) => {
       daysArray.forEach(day => {
         const entry = row.dailyStatus?.find((d: any) => d.day === day);
         flat.push({
-          employeeName: row.employeeName,
-          employeeCode: row.employeeCode,
-          designation:  row.designation,
-          day,
-          dayName: getDayName(year, month, day),
-          isSun:   isSunday(year, month, day),
-          status:  entry?.status  || "absent",
-          inTime:  entry?.inTime  || null,
-          outTime: entry?.outTime || null,
-          hours:   entry?.hours   ?? null,
-          ot:      entry?.overtimeHours ?? null,
+          employeeName: row.employeeName, employeeCode: row.employeeCode, designation: row.designation,
+          day, dayName: getDayName(year, month, day), isSun: isSunday(year, month, day),
+          status: entry?.status || "absent", inTime: entry?.inTime || null,
+          outTime: entry?.outTime || null, hours: entry?.hours ?? null,
+          ot: entry?.overtimeHours ?? null,
         });
       });
     });
@@ -268,54 +457,29 @@ export default function MonthlySheet() {
     return sortAsc ? <ChevronUp className="w-3 h-3 text-primary" /> : <ChevronDown className="w-3 h-3 text-primary" />;
   }
 
-  // ── Export data builders ──────────────────────────────────────────────────
-  function gridHeaders() {
-    return ["Employee", "Emp ID", "Designation",
-      ...daysArray.map(d => `${d}/${getDayName(year, month, d)}`),
-      "Present", "Absent", "Late", "Total Hrs", "OT Hrs",
-    ];
-  }
-  function gridRows() {
-    return rows.map((row: any) => [
-      row.employeeName, row.employeeCode, row.designation,
-      ...daysArray.map(day => {
-        const e  = row.dailyStatus?.find((d: any) => d.day === day);
-        const st = e?.status || "absent";
-        const cfg = STATUS_CFG[st] || STATUS_CFG.absent;
-        if (!e || st === "absent") return cfg.abbr;
-        const parts = [cfg.abbr];
-        if (e.inTime)  parts.push(`In: ${fmtTime(e.inTime)}`);
-        if (e.outTime) parts.push(`Out: ${fmtTime(e.outTime)}`);
-        if (e.hours != null) parts.push(fmtHrs(e.hours));
-        return parts.join(" | ");
-      }),
-      row.presentDays ?? 0,
-      row.absentDays  ?? 0,
-      row.lateDays    ?? 0,
-      fmtHrs(row.totalWorkHours),
-      row.overtimeHours > 0 ? fmtHrs(row.overtimeHours) : "—",
-    ]);
-  }
-
-  function tableHeaders() {
-    return ["Date", "Day", "Employee", "Emp ID", "Designation", "Status", "In Time", "Out Time", "Work Hrs", "OT Hrs"];
-  }
-  function tableDataRows() {
-    return filteredTableRows.map(r => [
-      `${r.day} ${monthName} ${year}`,
-      r.dayName,
-      r.employeeName,
-      r.employeeCode,
-      r.designation,
-      STATUS_CFG[r.status]?.label || r.status,
-      fmtTime(r.inTime)  || "—",
-      fmtTime(r.outTime) || "—",
-      fmtHrs(r.hours),
-      r.ot && r.ot > 0 ? fmtHrs(r.ot) : "—",
-    ]);
-  }
-
   const hasData = !isLoading && rows.length > 0;
+
+  async function handlePdf() {
+    setExporting(true);
+    try {
+      if (view === "grid") {
+        await exportGridPdf(rows, daysArray, year, month, monthName, filename);
+      } else {
+        await exportTablePdf(filteredTableRows, monthName, year, `${filename}-Timing`);
+      }
+    } finally { setExporting(false); }
+  }
+
+  async function handleExcel() {
+    setExporting(true);
+    try {
+      if (view === "grid") {
+        await exportGridExcel(rows, daysArray, year, month, monthName, filename);
+      } else {
+        await exportTableExcel(filteredTableRows, monthName, year, `${filename}-Timing`);
+      }
+    } finally { setExporting(false); }
+  }
 
   return (
     <div className="space-y-4">
@@ -323,17 +487,21 @@ export default function MonthlySheet() {
         title="Monthly Attendance Sheet"
         description="Grid and detailed timing view for attendance records."
         action={
-          <ExportButtons
-            getHeaders={view === "grid" ? gridHeaders  : tableHeaders}
-            getRows   ={view === "grid" ? gridRows     : tableDataRows}
-            filename  ={filename}
-            orientation={view === "grid" ? "landscape" : "portrait"}
-            disabled  ={!hasData}
-          />
+          <div className="flex items-center gap-1.5">
+            <button onClick={handlePdf} disabled={!hasData || exporting}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-40">
+              <FileText className="w-3.5 h-3.5" />
+              {exporting ? "Generating…" : "PDF"}
+            </button>
+            <button onClick={handleExcel} disabled={!hasData || exporting}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg transition-colors disabled:opacity-40">
+              <Sheet className="w-3.5 h-3.5" /> Excel
+            </button>
+          </div>
         }
       />
 
-      {/* Controls Bar */}
+      {/* Controls */}
       <Card className="p-3 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <CalendarIcon className="w-4 h-4 text-muted-foreground" />
@@ -347,7 +515,6 @@ export default function MonthlySheet() {
           </Select>
         </div>
 
-        {/* View Toggle */}
         <div className="flex items-center bg-muted rounded-lg p-0.5 gap-0.5">
           {([
             { mode: "grid"  as ViewMode, icon: LayoutGrid, label: "Grid"  },
@@ -380,15 +547,11 @@ export default function MonthlySheet() {
           <>
             <Select value={filterEmp} onChange={e => setFilterEmp(e.target.value)} className="text-xs h-8 w-48">
               <option value="all">All Employees</option>
-              {rows.map((r: any) => (
-                <option key={r.employeeCode} value={r.employeeCode}>{r.employeeName}</option>
-              ))}
+              {rows.map((r: any) => <option key={r.employeeCode} value={r.employeeCode}>{r.employeeName}</option>)}
             </Select>
             <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs h-8 w-36">
               <option value="all">All Status</option>
-              {Object.entries(STATUS_CFG).map(([k, v]) => (
-                <option key={k} value={k}>{v.label}</option>
-              ))}
+              {Object.entries(STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </Select>
             <span className="ml-auto text-xs text-muted-foreground">{filteredTableRows.length} records</span>
           </>
@@ -400,7 +563,7 @@ export default function MonthlySheet() {
       ) : rows.length === 0 ? (
         <Card className="p-12 text-center text-sm text-muted-foreground">No attendance records found for this period.</Card>
       ) : view === "grid" ? (
-        /* ── GRID VIEW ──────────────────────────────────────────────────────── */
+        /* ── GRID ── */
         <Card className="overflow-hidden">
           <div className="w-full overflow-x-auto">
             <table className="text-xs border-collapse min-w-max">
@@ -412,9 +575,7 @@ export default function MonthlySheet() {
                   {daysArray.map(day => (
                     <th key={day} className={cn(
                       "px-1 py-1.5 font-semibold border-b border-slate-600 text-center",
-                      isSunday(year, month, day)
-                        ? "bg-red-900/70 text-red-200"
-                        : "bg-slate-700 text-white",
+                      isSunday(year, month, day) ? "bg-red-900/70 text-red-200" : "bg-slate-700 text-white",
                       showTimes ? "min-w-[72px]" : "min-w-[34px]",
                     )}>
                       <div className="font-bold leading-tight">{day}</div>
@@ -440,16 +601,14 @@ export default function MonthlySheet() {
                     </td>
                     {daysArray.map(day => {
                       const entry = row.dailyStatus?.find((d: any) => d.day === day);
-                      const st    = entry?.status || "absent";
-                      const cfg   = STATUS_CFG[st] || STATUS_CFG.absent;
-                      const inT   = fmtTime(entry?.inTime);
-                      const outT  = fmtTime(entry?.outTime);
-                      const hrs   = entry?.hours;
+                      const st  = entry?.status || "absent";
+                      const cfg = STATUS_CFG[st] || STATUS_CFG.absent;
+                      const inT = fmtTime(entry?.inTime);
+                      const outT= fmtTime(entry?.outTime);
+                      const hrs = entry?.hours;
                       return (
-                        <td key={day} className={cn(
-                          "px-0.5 py-0.5 text-center align-middle",
-                          isSunday(year, month, day) && "bg-red-50/30"
-                        )}>
+                        <td key={day} className={cn("px-0.5 py-0.5 text-center align-middle",
+                          isSunday(year, month, day) && "bg-red-50/30")}>
                           {showTimes ? (
                             <div className={cn("rounded px-0.5 py-0.5 flex flex-col items-center gap-0", cfg.bg)}>
                               <span className={cn("text-[10px] font-bold leading-tight", cfg.text)}>{cfg.abbr}</span>
@@ -480,20 +639,18 @@ export default function MonthlySheet() {
           </div>
         </Card>
       ) : (
-        /* ── TABLE VIEW ─────────────────────────────────────────────────────── */
+        /* ── TABLE ── */
         <>
           <div className="flex flex-wrap gap-2">
             {Object.entries(STATUS_CFG).map(([k, cfg]) =>
               summaryByStatus[k] ? (
                 <div key={k} className={cn("flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium", cfg.badge)}>
                   <div className={cn("w-2 h-2 rounded-full", cfg.dot)} />
-                  {cfg.label}
-                  <span className="font-bold tabular-nums">{summaryByStatus[k]}</span>
+                  {cfg.label} <span className="font-bold tabular-nums">{summaryByStatus[k]}</span>
                 </div>
               ) : null
             )}
           </div>
-
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-xs border-collapse">
@@ -534,10 +691,8 @@ export default function MonthlySheet() {
                         r.isSun ? "bg-red-50/40 hover:bg-red-50/70" : i % 2 === 0 ? "hover:bg-muted/30" : "bg-muted/10 hover:bg-muted/30"
                       )}>
                         <td className="px-4 py-2.5">
-                          <div className={cn(
-                            "w-10 h-10 rounded-lg flex flex-col items-center justify-center font-bold leading-none",
-                            r.isSun ? "bg-red-100 text-red-700" : "bg-primary/10 text-primary"
-                          )}>
+                          <div className={cn("w-10 h-10 rounded-lg flex flex-col items-center justify-center font-bold leading-none",
+                            r.isSun ? "bg-red-100 text-red-700" : "bg-primary/10 text-primary")}>
                             <span className="text-[10px]">{monthName.slice(0,3)}</span>
                             <span className="text-sm">{r.day}</span>
                           </div>
@@ -551,8 +706,7 @@ export default function MonthlySheet() {
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold", cfg.badge)}>
-                            <div className={cn("w-1.5 h-1.5 rounded-full", cfg.dot)} />
-                            {cfg.label}
+                            <div className={cn("w-1.5 h-1.5 rounded-full", cfg.dot)} /> {cfg.label}
                           </span>
                         </td>
                         <td className="px-4 py-2.5 text-center">
@@ -603,12 +757,8 @@ export default function MonthlySheet() {
             <span className={cn("w-3 h-3 rounded-full inline-block", cfg.dot)} /> {cfg.label}
           </span>
         ))}
-        {view === "grid" && (
-          <span className="ml-auto text-muted-foreground/70">Toggle "Show times" to switch between compact and detailed grid</span>
-        )}
-        <span className={cn("text-muted-foreground/70", view === "table" && "ml-auto")}>
-          <Download className="w-3 h-3 inline mr-1" />
-          Export exports the current view — Grid exports the calendar, Table exports timing rows
+        <span className="ml-auto text-muted-foreground/60 italic">
+          Grid PDF = compact register · Table PDF = timing detail
         </span>
       </div>
     </div>
