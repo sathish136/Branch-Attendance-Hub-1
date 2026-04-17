@@ -53,6 +53,7 @@ function ExportButtons({
     const { default: autoTable } = await import("jspdf-autotable");
     const doc = new jsPDF({ orientation: "landscape" });
     const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
 
     let slpImgData: string | null = null;
     let liveUImgData: string | null = null;
@@ -61,38 +62,74 @@ function ExportButtons({
       liveUImgData = await toDataUrl("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQCzrc0k5wmNzmItazY38yj1_7K5zAFLMxn-Q&s");
     } catch { /* proceed without images */ }
 
+    const headerH = 36;
+
+    // Header background
+    doc.setFillColor(30, 58, 138);
+    doc.rect(0, 0, pageW, headerH, "F");
+
+    // Thin accent bar at bottom of header
+    doc.setFillColor(220, 38, 38);
+    doc.rect(0, headerH, pageW, 1.5, "F");
+
+    // Sri Lanka Post logo — centered
+    const logoSize = 22;
+    const logoX = pageW / 2 - logoSize / 2;
+    const logoY = 2;
     if (slpImgData) {
-      doc.addImage(slpImgData, "PNG", 14, 4, 18, 18);
+      doc.addImage(slpImgData, "PNG", logoX, logoY, logoSize, logoSize);
     }
-    doc.setFontSize(13);
-    doc.setTextColor(30, 58, 138);
+
+    // Organization name — centered below logo
     doc.setFont("helvetica", "bold");
-    doc.text("Sri Lanka Post · Colombo District", slpImgData ? 36 : 14, 11);
+    doc.setFontSize(11);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Sri Lanka Post — Colombo District", pageW / 2, logoY + logoSize + 3.5, { align: "center" });
+
+    // Report name — centered, smaller
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(80);
-    doc.text(filename, slpImgData ? 36 : 14, 17);
+    doc.setFontSize(8);
+    doc.setTextColor(180, 210, 255);
+    const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+    doc.text(`${filename}   |   Generated: ${today}`, pageW / 2, logoY + logoSize + 9, { align: "center" });
 
     autoTable(doc, {
       head: [getHeaders()],
       body: getRows().map(r => r.map(v => String(v ?? ""))),
-      startY: 26,
-      styles: { fontSize: 7, cellPadding: 2 },
-      headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: "bold" },
-      alternateRowStyles: { fillColor: [245, 247, 255] },
+      startY: headerH + 5,
+      margin: { left: 10, right: 10 },
+      styles: { fontSize: 7.5, cellPadding: 2.5 },
+      headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: "bold", fontSize: 8 },
+      alternateRowStyles: { fillColor: [245, 248, 255] },
+      tableLineColor: [200, 210, 230],
+      tableLineWidth: 0.2,
     });
 
     const pageCount = (doc as any).internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
-      const pageH = doc.internal.pageSize.getHeight();
+      // Footer line
+      doc.setDrawColor(200, 210, 230);
+      doc.setLineWidth(0.3);
+      doc.line(10, pageH - 12, pageW - 10, pageH - 12);
+
+      // Live U logo in footer
       if (liveUImgData) {
-        doc.addImage(liveUImgData, "JPEG", pageW / 2 - 16, pageH - 9, 6, 6);
+        doc.addImage(liveUImgData, "JPEG", pageW / 2 - 18, pageH - 10, 6, 6);
       }
+
+      // "Powered by" text centered
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(7);
+      doc.setTextColor(120, 120, 140);
+      const poweredX = liveUImgData ? pageW / 2 - 11 : pageW / 2;
+      doc.text("Powered by  Live U (Pvt) Ltd", poweredX, pageH - 6, { align: "left" });
+
+      // Page number on right
       doc.setTextColor(150);
-      doc.text("Powered by Live U (Pvt) Ltd", pageW / 2 + (liveUImgData ? -8 : 0), pageH - 5, { align: "left" });
+      doc.text(`Page ${i} of ${pageCount}`, pageW - 10, pageH - 6, { align: "right" });
     }
+
     doc.save(`${filename}.pdf`);
   }
 
