@@ -62,36 +62,33 @@ function ExportButtons({
       liveUImgData = await toDataUrl("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQCzrc0k5wmNzmItazY38yj1_7K5zAFLMxn-Q&s");
     } catch { /* proceed without images */ }
 
-    const headerH = 36;
+    const headerH = 38;
 
-    // Header background
-    doc.setFillColor(30, 58, 138);
-    doc.rect(0, 0, pageW, headerH, "F");
-
-    // Thin accent bar at bottom of header
-    doc.setFillColor(220, 38, 38);
-    doc.rect(0, headerH, pageW, 1.5, "F");
-
-    // Sri Lanka Post logo — centered
+    // Sri Lanka Post logo — centered, natural square aspect ratio
     const logoSize = 22;
     const logoX = pageW / 2 - logoSize / 2;
-    const logoY = 2;
+    const logoY = 4;
     if (slpImgData) {
       doc.addImage(slpImgData, "PNG", logoX, logoY, logoSize, logoSize);
     }
 
     // Organization name — centered below logo
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(255, 255, 255);
-    doc.text("Sri Lanka Post — Colombo District", pageW / 2, logoY + logoSize + 3.5, { align: "center" });
+    doc.setFontSize(12);
+    doc.setTextColor(30, 58, 138);
+    doc.text("Sri Lanka Post — Colombo District", pageW / 2, logoY + logoSize + 4, { align: "center" });
 
     // Report name — centered, smaller
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(180, 210, 255);
+    doc.setFontSize(8.5);
+    doc.setTextColor(100, 100, 120);
     const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
-    doc.text(`${filename}   |   Generated: ${today}`, pageW / 2, logoY + logoSize + 9, { align: "center" });
+    doc.text(`${filename}   |   Generated: ${today}`, pageW / 2, logoY + logoSize + 9.5, { align: "center" });
+
+    // Divider line below header
+    doc.setDrawColor(30, 58, 138);
+    doc.setLineWidth(0.5);
+    doc.line(10, headerH, pageW - 10, headerH);
 
     autoTable(doc, {
       head: [getHeaders()],
