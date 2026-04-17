@@ -164,25 +164,33 @@ async function exportGridPdf(
     if (slpData) {
       const dims = await getImageDimensions(slpData);
       logoH = 18; logoW = 18 * (dims.w / dims.h);
-      doc.addImage(slpData, "PNG", margin, 4, logoW, logoH);
     }
-    const tx = margin + logoW + 4;
+    // Centre the logo+text block on the page
+    const textBlockW = 68; // approximate width of the text area
+    const groupW     = logoW + 4 + textBlockW;
+    const groupX     = (pageW - groupW) / 2;
+    if (slpData) {
+      doc.addImage(slpData, "PNG", groupX, 4, logoW, logoH);
+    }
+    const tx = groupX + logoW + 4;
+
+    // "SRI LANKA POST" — large navy blue (no duplicate small line)
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(22, 48, 110);
+    doc.text("SRI LANKA POST", tx, 13);
+
+    // "Human Resources Department"
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(80, 80, 100);
-    doc.text("SRI LANKA POST", tx, 9);
+    doc.text("Human Resources Department", tx, 18);
+
+    // "MONTHLY ATTENDANCE SHEET" — dark maroon
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.setTextColor(178, 34, 34);
-    doc.text("SRI LANKA POST", tx, 15);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(80, 80, 100);
-    doc.text("Human Resources Department", tx, 19);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(178, 34, 34);
-    doc.text("MONTHLY ATTENDANCE SHEET", tx, 23);
+    doc.setFontSize(8.5);
+    doc.setTextColor(139, 0, 0);
+    doc.text("MONTHLY ATTENDANCE SHEET", tx, 23.5);
 
     // Period (top right)
     doc.setFont("helvetica", "normal");
@@ -191,8 +199,8 @@ async function exportGridPdf(
     doc.text(periodStr, pageW - margin, 9, { align: "right" });
 
     // Horizontal rule
-    doc.setDrawColor(200, 210, 230);
-    doc.setLineWidth(0.4);
+    doc.setDrawColor(180, 190, 210);
+    doc.setLineWidth(0.5);
     doc.line(margin, 27, pageW - margin, 27);
     return 29; // Y after header
   }
