@@ -38,28 +38,60 @@ function ExportButtons({
   filename: string;
   disabled?: boolean;
 }) {
+  async function toDataUrl(url: string): Promise<string> {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob);
+    });
+  }
+
   async function handlePdf() {
     const { default: jsPDF } = await import("jspdf");
     const { default: autoTable } = await import("jspdf-autotable");
     const doc = new jsPDF({ orientation: "landscape" });
+    const pageW = doc.internal.pageSize.getWidth();
+
+    let slpImgData: string | null = null;
+    let liveUImgData: string | null = null;
+    try {
+      slpImgData = await toDataUrl("https://upload.wikimedia.org/wikipedia/en/c/c1/Sri_Lanka_Post_logo.png");
+      liveUImgData = await toDataUrl("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQCzrc0k5wmNzmItazY38yj1_7K5zAFLMxn-Q&s");
+    } catch { /* proceed without images */ }
+
+    if (slpImgData) {
+      doc.addImage(slpImgData, "PNG", 14, 4, 18, 18);
+    }
     doc.setFontSize(13);
-    doc.text(filename, 14, 16);
+    doc.setTextColor(30, 58, 138);
+    doc.setFont("helvetica", "bold");
+    doc.text("Sri Lanka Post · Colombo District", slpImgData ? 36 : 14, 11);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(80);
+    doc.text(filename, slpImgData ? 36 : 14, 17);
+
     autoTable(doc, {
       head: [getHeaders()],
       body: getRows().map(r => r.map(v => String(v ?? ""))),
-      startY: 22,
+      startY: 26,
       styles: { fontSize: 7, cellPadding: 2 },
       headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: "bold" },
       alternateRowStyles: { fillColor: [245, 247, 255] },
     });
+
     const pageCount = (doc as any).internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
-      const pageW = doc.internal.pageSize.getWidth();
       const pageH = doc.internal.pageSize.getHeight();
+      if (liveUImgData) {
+        doc.addImage(liveUImgData, "JPEG", pageW / 2 - 16, pageH - 9, 6, 6);
+      }
       doc.setFontSize(7);
       doc.setTextColor(150);
-      doc.text("Powered by Live U (Pvt) Ltd", pageW / 2, pageH - 6, { align: "center" });
+      doc.text("Powered by Live U (Pvt) Ltd", pageW / 2 + (liveUImgData ? -8 : 0), pageH - 5, { align: "left" });
     }
     doc.save(`${filename}.pdf`);
   }
