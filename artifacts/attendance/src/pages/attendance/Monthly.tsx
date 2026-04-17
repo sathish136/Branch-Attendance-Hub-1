@@ -113,21 +113,31 @@ async function buildPdfBase(orientation: "landscape" | "portrait", title: string
   return { doc, pageW, pageH, headerH, liveUData, filename };
 }
 
-function addPdfFooters(doc: any, pageH: number, pageW: number, liveUData: string | null) {
+function addPdfFooters(doc: any, pageH: number, pageW: number, liveUData: string | null, subtitle?: string) {
   const count = doc.internal.getNumberOfPages();
+  const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
   for (let i = 1; i <= count; i++) {
     doc.setPage(i);
     doc.setDrawColor(200, 210, 230);
     doc.setLineWidth(0.3);
-    doc.line(8, pageH - 11, pageW - 8, pageH - 11);
-    if (liveUData) doc.addImage(liveUData, "JPEG", pageW / 2 - 18, pageH - 9.5, 5.5, 5.5);
+    doc.line(8, pageH - 13, pageW - 8, pageH - 13);
+    // Report subtitle on every page (left-aligned)
+    if (subtitle) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 100, 130);
+      doc.text(`${subtitle}   |   Generated: ${today}`, 8, pageH - 8.5);
+    }
+    // Live U logo + branding (center)
+    if (liveUData) doc.addImage(liveUData, "JPEG", pageW / 2 - 18, pageH - 11, 5, 5);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.5);
     doc.setTextColor(120, 120, 140);
     const px = liveUData ? pageW / 2 - 11 : pageW / 2;
-    doc.text("Powered by  Live U (Pvt) Ltd, Sri Lanka", px, pageH - 5.5, { align: "left" });
+    doc.text("Powered by  Live U (Pvt) Ltd, Sri Lanka", px, pageH - 7, { align: "left" });
+    // Page number (right)
     doc.setTextColor(150);
-    doc.text(`Page ${i} of ${count}`, pageW - 8, pageH - 5.5, { align: "right" });
+    doc.text(`Page ${i} of ${count}`, pageW - 8, pageH - 8.5, { align: "right" });
   }
 }
 
@@ -515,32 +525,24 @@ async function exportTablePdf(
       7: { cellWidth: 26, halign: "center", textColor: [29, 78, 216]  },
       8: { cellWidth: 24, halign: "center", textColor: [194, 65, 12]  },
     },
-    bodyStyles: { fillColor: [255, 255, 255] },
-    // Build an array of row indices where a new employee group starts
+    bodyStyles:         { fillColor: [255, 255, 255] },
+    alternateRowStyles: { fillColor: [255, 255, 255] },
     didParseCell: (() => {
-      // Pre-compute employee group boundaries
+      // Pre-compute employee group start boundaries (for separator line)
       const empGroupStart: boolean[] = sortedRows.map((r, i) =>
         i === 0 || r.employeeCode !== sortedRows[i - 1].employeeCode
       );
-      // Alternate fill per employee group
-      let groupIdx = -1;
-      let lastEmp = "";
-      const fills: [number,number,number][] = [[255,255,255],[247,250,255]];
-      const rowFill: [number,number,number][] = sortedRows.map(r => {
-        if (r.employeeCode !== lastEmp) { groupIdx++; lastEmp = r.employeeCode; }
-        return fills[groupIdx % 2];
-      });
       return (data: any) => {
         if (data.section === "body") {
           const ri = data.row.index;
-          // Alternating fill per employee group
-          data.cell.styles.fillColor = rowFill[ri];
-          // Top border at start of each employee group
+          // All rows white — same as web view
+          data.cell.styles.fillColor = [255, 255, 255];
+          // Navy top border at the start of each employee group
           if (empGroupStart[ri]) {
             data.cell.styles.lineColor = [22, 48, 110];
-            data.cell.styles.lineWidth = { top: 0.6, bottom: 0.1, left: 0, right: 0 };
+            data.cell.styles.lineWidth = { top: 0.7, bottom: 0.1, left: 0, right: 0 };
           }
-          // Status column colour
+          // Status column — colour by status
           if (data.column.index === 4) {
             const v = String(data.cell.raw || "");
             if (v === "Present")  data.cell.styles.textColor = [21, 128, 61];
@@ -550,7 +552,7 @@ async function exportTablePdf(
             if (v === "Leave")    data.cell.styles.textColor = [29, 78, 216];
             if (v === "Holiday")  data.cell.styles.textColor = [100, 100, 120];
           }
-          // Sunday row tint
+          // Sunday row — light red tint
           if (sortedRows[ri]?.isSun) data.cell.styles.fillColor = [254, 242, 242];
         }
       };
@@ -559,7 +561,7 @@ async function exportTablePdf(
     rowPageBreak: "avoid",
   });
 
-  addPdfFooters(doc, pageH, pageW, liveUData);
+  addPdfFooters(doc, pageH, pageW, liveUData, `Timing Detail — ${monthName} ${year}`);
   doc.save(`${filename}.pdf`);
 }
 
