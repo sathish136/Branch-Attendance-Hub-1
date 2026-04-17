@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import liveuLogo from "@/assets/liveu-logo.png";
 import {
   LayoutDashboard,
@@ -24,6 +24,9 @@ import {
   UserX,
   AlarmClock,
   MapPin,
+  ChevronRight,
+  Loader2,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -168,14 +171,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string>(() => localStorage.getItem("org_logo") || liveuLogo);
   const [now, setNow] = useState(new Date());
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [searchOpen,     setSearchOpen]     = useState(false);
+  const [searchQuery,    setSearchQuery]    = useState("");
+  const [searchSelIdx,   setSearchSelIdx]   = useState(-1);
+  const [searchData,     setSearchData]     = useState<{ employees: any[]; branches: any[] } | null>(null);
+  const [searchFetching, setSearchFetching] = useState(false);
+  const [notifOpen,      setNotifOpen]      = useState(false);
+  const [userMenuOpen,   setUserMenuOpen]   = useState(false);
   const { items: notifItems } = useNotifications();
-  const notifRef = useRef<HTMLDivElement>(null);
-  const userMenuRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const notifRef      = useRef<HTMLDivElement>(null);
+  const userMenuRef   = useRef<HTMLDivElement>(null);
+  const searchRef     = useRef<HTMLInputElement>(null);
+  const searchBoxRef  = useRef<HTMLDivElement>(null);
 
   const storedUser = (() => {
     try { return JSON.parse(localStorage.getItem("auth_user") || "{}"); } catch { return {}; }
@@ -213,7 +220,91 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   /* Focus search input when opened */
   useEffect(() => {
     if (searchOpen) setTimeout(() => searchRef.current?.focus(), 50);
+    if (!searchOpen) { setSearchQuery(""); setSearchSelIdx(-1); }
   }, [searchOpen]);
+
+  /* ⌘K / Ctrl+K global shortcut */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
+  /* Fetch employees + branches once on first search open */
+  useEffect(() => {
+    if (!searchOpen || searchData) return;
+    setSearchFetching(true);
+    Promise.allSettled([
+      fetch(_apiUrl("/employees")).then(r => r.json()),
+      fetch(_apiUrl("/branches")).then(r => r.json()),
+    ]).then(([empRes, brRes]) => {
+      setSearchData({
+        employees: empRes.status === "fulfilled" && Array.isArray(empRes.value) ? empRes.value : [],
+        branches:  brRes.status  === "fulfilled" && Array.isArray(brRes.value)  ? brRes.value  : [],
+      });
+      setSearchFetching(false);
+    });
+  }, [searchOpen]);
+
+  /* Reset selection index when query changes */
+  useEffect(() => { setSearchSelIdx(-1); }, [searchQuery]);
+
+  /* Close search on outside click */
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    if (searchOpen) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [searchOpen]);
+
+  /* Build flat search results from query */
+  const ALL_PAGES = NAV_GROUPS.flatMap(g => g.items);
+
+  const { pageHits, empHits, branchHits, flatHits } = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return { pageHits: [], empHits: [], branchHits: [], flatHits: [] };
+
+    const pageHits = ALL_PAGES.filter(p => p.label.toLowerCase().includes(q)).slice(0, 5);
+    const empHits  = (searchData?.employees || [])
+      .filter((e: any) =>
+        (e.name || e.fullName || "").toLowerCase().includes(q) ||
+        (e.employeeCode || e.code || "").toLowerCase().includes(q) ||
+        (e.designation || "").toLowerCase().includes(q)
+      ).slice(0, 5);
+    const branchHits = (searchData?.branches || [])
+      .filter((b: any) =>
+        (b.name || b.branchName || "").toLowerCase().includes(q) ||
+        (b.location || b.address || "").toLowerCase().includes(q)
+      ).slice(0, 5);
+
+    const flatHits = [
+      ...pageHits.map((p: any) => ({ kind: "page", href: p.href, label: p.label, sub: "", icon: p.icon })),
+      ...empHits.map((e: any) => ({ kind: "employee", href: "/employees", label: e.name || e.fullName || "—", sub: e.employeeCode || e.code || "", icon: User })),
+      ...branchHits.map((b: any) => ({ kind: "branch", href: "/branches", label: b.name || b.branchName || "—", sub: b.location || b.address || "", icon: Building2 })),
+    ];
+    return { pageHits, empHits, branchHits, flatHits };
+  }, [searchQuery, searchData]);
+
+  function executeSearch(href: string) {
+    setLocation(href);
+    setSearchOpen(false);
+  }
+
+  function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") { setSearchOpen(false); return; }
+    if (flatHits.length === 0) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setSearchSelIdx(i => Math.min(i + 1, flatHits.length - 1)); }
+    if (e.key === "ArrowUp")   { e.preventDefault(); setSearchSelIdx(i => Math.max(i - 1, 0)); }
+    if (e.key === "Enter"      && searchSelIdx >= 0) executeSearch(flatHits[searchSelIdx].href);
+  }
 
   async function handleLogout() {
     try {
@@ -454,34 +545,126 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
           {/* Centre — search bar */}
           <div className="flex-1 flex justify-center px-4">
-            {searchOpen ? (
-              <div className="relative w-full max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <input
-                  ref={searchRef}
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Escape") { setSearchOpen(false); setSearchQuery(""); } }}
-                  placeholder="Search employees, reports, branches…"
-                  className="w-full h-8 pl-8 pr-8 rounded-lg bg-muted border border-border text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-                />
-                {searchQuery && (
-                  <button onClick={() => setSearchQuery("")}
+            <div ref={searchBoxRef} className="relative w-full max-w-sm">
+
+              {/* Input row */}
+              {searchOpen ? (
+                <>
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none z-10" />
+                  <input
+                    ref={searchRef}
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    onKeyDown={handleSearchKey}
+                    placeholder="Search pages, employees, branches…"
+                    className="w-full h-8 pl-8 pr-8 rounded-lg bg-muted border border-primary/40 text-[13px] text-foreground placeholder:text-muted-foreground outline-none ring-2 ring-primary/20 transition-all"
+                  />
+                  <button onClick={() => setSearchOpen(false)}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                     <X className="w-3.5 h-3.5" />
                   </button>
-                )}
-              </div>
-            ) : (
-              <button
-                onClick={() => setSearchOpen(true)}
-                className="flex items-center gap-2 h-8 px-3 rounded-lg bg-muted border border-border text-[13px] text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all w-full max-w-sm"
-              >
-                <Search className="w-3.5 h-3.5 shrink-0" />
-                <span className="flex-1 text-left">Search…</span>
-                <kbd className="text-[10px] bg-background border border-border rounded px-1.5 py-0.5 font-mono hidden md:inline">⌘K</kbd>
-              </button>
-            )}
+                </>
+              ) : (
+                <button
+                  onClick={() => setSearchOpen(true)}
+                  className="flex items-center gap-2 h-8 px-3 rounded-lg bg-muted border border-border text-[13px] text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all w-full"
+                >
+                  <Search className="w-3.5 h-3.5 shrink-0" />
+                  <span className="flex-1 text-left">Search…</span>
+                  <kbd className="text-[10px] bg-background border border-border rounded px-1.5 py-0.5 font-mono hidden md:inline">⌘K</kbd>
+                </button>
+              )}
+
+              {/* Results dropdown */}
+              {searchOpen && (
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden max-h-[420px] overflow-y-auto">
+
+                  {/* Empty state — no query */}
+                  {!searchQuery.trim() && (
+                    <div className="px-4 py-5 text-center">
+                      <Search className="w-7 h-7 text-muted-foreground/40 mx-auto mb-2" />
+                      <p className="text-xs text-muted-foreground">Type to search pages, employees and branches</p>
+                      <div className="flex items-center justify-center gap-3 mt-3">
+                        {ALL_PAGES.slice(0, 4).map(p => (
+                          <button key={p.href} onClick={() => executeSearch(p.href)}
+                            className="text-[11px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors">
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Loading state */}
+                  {searchQuery.trim() && searchFetching && (
+                    <div className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…
+                    </div>
+                  )}
+
+                  {/* No results */}
+                  {searchQuery.trim() && !searchFetching && flatHits.length === 0 && (
+                    <div className="px-4 py-5 text-center">
+                      <p className="text-xs text-muted-foreground">No results for <strong>"{searchQuery}"</strong></p>
+                    </div>
+                  )}
+
+                  {/* Results */}
+                  {searchQuery.trim() && flatHits.length > 0 && (() => {
+                    let idx = -1;
+                    const section = (label: string, items: typeof flatHits, from: number) => items.length === 0 ? null : (
+                      <div>
+                        <p className="px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+                        {items.map(hit => {
+                          idx++;
+                          const i = idx;
+                          const Icon = hit.icon as React.ElementType;
+                          const isSelected = searchSelIdx === i;
+                          return (
+                            <button key={`${hit.kind}-${hit.label}-${i}`}
+                              onClick={() => executeSearch(hit.href)}
+                              onMouseEnter={() => setSearchSelIdx(i)}
+                              className={cn(
+                                "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors",
+                                isSelected ? "bg-primary/10" : "hover:bg-muted/60"
+                              )}
+                            >
+                              <span className={cn(
+                                "w-7 h-7 rounded-lg flex items-center justify-center shrink-0",
+                                isSelected ? "bg-primary/15" : "bg-muted"
+                              )}>
+                                <Icon className={cn("w-3.5 h-3.5", isSelected ? "text-primary" : "text-muted-foreground")} />
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <p className={cn("text-[13px] font-medium truncate", isSelected ? "text-primary" : "text-foreground")}>{hit.label}</p>
+                                {hit.sub && <p className="text-[11px] text-muted-foreground truncate">{hit.sub}</p>}
+                              </div>
+                              {isSelected && <ChevronRight className="w-3.5 h-3.5 text-primary shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+
+                    return (
+                      <>
+                        {section("Pages",     flatHits.filter(h => h.kind === "page"),     0)}
+                        {section("Employees", flatHits.filter(h => h.kind === "employee"), pageHits.length)}
+                        {section("Branches",  flatHits.filter(h => h.kind === "branch"),   pageHits.length + empHits.length)}
+                        <div className="px-3 py-2 border-t border-border flex items-center justify-between mt-1">
+                          <span className="text-[10px] text-muted-foreground">{flatHits.length} result{flatHits.length !== 1 ? "s" : ""}</span>
+                          <span className="text-[10px] text-muted-foreground flex gap-1.5">
+                            <kbd className="bg-muted border border-border rounded px-1 py-0.5 font-mono">↑↓</kbd> navigate
+                            <kbd className="bg-muted border border-border rounded px-1 py-0.5 font-mono">↵</kbd> open
+                            <kbd className="bg-muted border border-border rounded px-1 py-0.5 font-mono">Esc</kbd> close
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right — notification + user */}
