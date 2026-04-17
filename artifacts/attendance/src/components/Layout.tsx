@@ -579,19 +579,22 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               {searchOpen && (
                 <div className="absolute top-full left-0 right-0 mt-1.5 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden max-h-[420px] overflow-y-auto">
 
-                  {/* Empty state — no query */}
+                  {/* Empty state — show all modules */}
                   {!searchQuery.trim() && (
-                    <div className="px-4 py-5 text-center">
-                      <Search className="w-7 h-7 text-muted-foreground/40 mx-auto mb-2" />
-                      <p className="text-xs text-muted-foreground">Type to search pages, employees and branches</p>
-                      <div className="flex items-center justify-center gap-3 mt-3">
-                        {ALL_PAGES.slice(0, 4).map(p => (
+                    <div className="py-1">
+                      <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Modules</p>
+                      {ALL_PAGES.map(p => {
+                        const Icon = p.icon as React.ElementType;
+                        return (
                           <button key={p.href} onClick={() => executeSearch(p.href)}
-                            className="text-[11px] px-2 py-1 rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors">
-                            {p.label}
+                            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-muted/60 transition-colors text-left">
+                            <span className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                              <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                            </span>
+                            <span className="text-[13px] text-foreground">{p.label}</span>
                           </button>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
                   )}
 
