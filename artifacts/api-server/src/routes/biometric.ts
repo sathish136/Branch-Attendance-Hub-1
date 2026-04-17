@@ -6,6 +6,14 @@ import { autoCreateEmployees, autoSync, processAttendance } from "../lib/biometr
 
 const router = Router();
 
+// A device is considered online only if it synced within the last 10 minutes
+const ONLINE_THRESHOLD_MS = 10 * 60 * 1000;
+function effectiveStatus(storedStatus: string, lastSync: Date | null): string {
+  if (!lastSync) return "offline";
+  const age = Date.now() - new Date(lastSync).getTime();
+  return age <= ONLINE_THRESHOLD_MS ? "online" : "offline";
+}
+
 router.get("/devices", async (_req, res) => {
   try {
     const all = await db.select({
@@ -18,6 +26,7 @@ router.get("/devices", async (_req, res) => {
       totalPushLogs: 0,
       lastSync: r.dev.lastSync?.toISOString() || null,
       createdAt: r.dev.createdAt.toISOString(),
+      status: effectiveStatus(r.dev.status, r.dev.lastSync ?? null),
     })));
   } catch (e) { res.status(500).json({ message: "Error", success: false }); }
 });
@@ -51,6 +60,7 @@ router.put("/devices/:id", async (req, res) => {
       totalPushLogs: 0,
       lastSync: dev.lastSync?.toISOString() || null,
       createdAt: dev.createdAt.toISOString(),
+      status: effectiveStatus(dev.status, dev.lastSync ?? null),
       employeesCreated,
     });
   } catch (e) { console.error(e); res.status(500).json({ message: "Error", success: false }); }
