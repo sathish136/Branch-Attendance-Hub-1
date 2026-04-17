@@ -111,13 +111,48 @@ function ExportButtons({
     autoTable(doc, {
       head: [getHeaders()],
       body: getRows().map(r => r.map(v => String(v ?? ""))),
-      startY: headerH + 5,
+      startY: headerH + 6,
       margin: { left: 10, right: 10 },
-      styles: { fontSize: 7.5, cellPadding: 2.5 },
-      headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: "bold", fontSize: 8 },
-      alternateRowStyles: { fillColor: [245, 248, 255] },
-      tableLineColor: [200, 210, 230],
-      tableLineWidth: 0.2,
+      tableWidth: "auto",
+      styles: {
+        fontSize: 8,
+        cellPadding: { top: 4, bottom: 4, left: 5, right: 5 },
+        font: "helvetica",
+        textColor: [40, 40, 60],
+        lineColor: [220, 228, 240],
+        lineWidth: 0.25,
+        overflow: "linebreak",
+        minCellHeight: 10,
+      },
+      headStyles: {
+        fillColor: [22, 48, 110],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 8.5,
+        cellPadding: { top: 5, bottom: 5, left: 5, right: 5 },
+        halign: "center",
+        lineWidth: 0,
+      },
+      alternateRowStyles: {
+        fillColor: [245, 248, 255],
+      },
+      bodyStyles: {
+        fillColor: [255, 255, 255],
+      },
+      columnStyles: {
+        0: { halign: "left", fontStyle: "bold", textColor: [22, 48, 110] },
+      },
+      didParseCell: (data) => {
+        if (data.section === "head") {
+          data.cell.styles.halign = "center";
+        }
+        if (data.section === "body" && data.column.index !== 0) {
+          data.cell.styles.halign = "center";
+        }
+      },
+      didDrawPage: () => {},
+      showHead: "everyPage",
+      rowPageBreak: "avoid",
     });
 
     const pageCount = (doc as any).internal.getNumberOfPages();
