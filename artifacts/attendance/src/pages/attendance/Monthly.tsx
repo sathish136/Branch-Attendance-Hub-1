@@ -163,46 +163,43 @@ async function exportGridPdf(
     let logoW = 18, logoH = 18;
     if (slpData) {
       const dims = await getImageDimensions(slpData);
-      logoH = 18; logoW = 18 * (dims.w / dims.h);
+      logoH = 16; logoW = 16 * (dims.w / dims.h);
+      // Logo centered at the very top
+      doc.addImage(slpData, "PNG", (pageW - logoW) / 2, 3, logoW, logoH);
     }
-    // Centre the logo+text block on the page
-    const textBlockW = 68; // approximate width of the text area
-    const groupW     = logoW + 4 + textBlockW;
-    const groupX     = (pageW - groupW) / 2;
-    if (slpData) {
-      doc.addImage(slpData, "PNG", groupX, 4, logoW, logoH);
-    }
-    const tx = groupX + logoW + 4;
 
-    // "SRI LANKA POST" — large navy blue (no duplicate small line)
+    const textY = 3 + logoH + 2; // text block starts right below logo
+
+    // "SRI LANKA POST" — bold navy blue, centered
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
+    doc.setFontSize(13);
     doc.setTextColor(22, 48, 110);
-    doc.text("SRI LANKA POST", tx, 13);
+    doc.text("SRI LANKA POST", pageW / 2, textY + 4, { align: "center" });
 
-    // "Human Resources Department"
+    // "Human Resources Department" — gray, centered
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(80, 80, 100);
-    doc.text("Human Resources Department", tx, 18);
+    doc.text("Human Resources Department", pageW / 2, textY + 9, { align: "center" });
 
-    // "MONTHLY ATTENDANCE SHEET" — dark maroon
+    // "MONTHLY ATTENDANCE SHEET" — bold dark maroon, centered
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(139, 0, 0);
-    doc.text("MONTHLY ATTENDANCE SHEET", tx, 23.5);
+    doc.text("MONTHLY ATTENDANCE SHEET", pageW / 2, textY + 14, { align: "center" });
 
-    // Period (top right)
+    // Period — top right corner
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(80, 80, 100);
-    doc.text(periodStr, pageW - margin, 9, { align: "right" });
+    doc.text(periodStr, pageW - margin, 7, { align: "right" });
 
     // Horizontal rule
+    const ruleY = textY + 17;
     doc.setDrawColor(180, 190, 210);
     doc.setLineWidth(0.5);
-    doc.line(margin, 27, pageW - margin, 27);
-    return 29; // Y after header
+    doc.line(margin, ruleY, pageW - margin, ruleY);
+    return ruleY + 2; // Y after header
   }
 
   // ── Draw employee info bar ───────────────────────────────────────────────────
@@ -360,31 +357,39 @@ async function exportGridPdf(
             if (data.section === "body") data.cell.styles.fillColor = [254, 242, 242];
           }
         }
-        // Colour the STATUS row cells
-        if (data.section === "body" && data.row.index === 3 && dayIdx >= 0 && dayIdx < daysArray.length) {
-          const v = String(data.cell.raw || "");
-          if (v === "P")  data.cell.styles.textColor = [21, 128, 61];
-          if (v === "L")  data.cell.styles.textColor = [146, 64, 14];
-          if (v === "A")  data.cell.styles.textColor = [185, 28, 28];
-          if (v === "HD") data.cell.styles.textColor = [113, 63, 18];
-          if (v === "LV") data.cell.styles.textColor = [29, 78, 216];
-          if (v === "H")  data.cell.styles.textColor = [100, 100, 120];
-          if (v === "Ex-1" || v === "P") data.cell.styles.textColor = [21, 128, 61];
+        // Row-level value colours (only for day columns, not the label column)
+        if (data.section === "body" && data.column.index > 0) {
+          const ri = data.row.index;
+          // IN TIME  — dark red
+          if (ri === 0) data.cell.styles.textColor = [185, 28, 28];
+          // OUT TIME — dark navy
+          if (ri === 1) data.cell.styles.textColor = [22, 48, 110];
+          // WORKED HRS — dark slate
+          if (ri === 2) data.cell.styles.textColor = [50, 50, 70];
+          // STATUS — colour per status code
+          if (ri === 3) {
+            const v = String(data.cell.raw || "");
+            if (v === "P")  data.cell.styles.textColor = [21, 128, 61];
+            if (v === "L")  data.cell.styles.textColor = [146, 64, 14];
+            if (v === "A")  data.cell.styles.textColor = [185, 28, 28];
+            if (v === "HD") data.cell.styles.textColor = [113, 63, 18];
+            if (v === "LV") data.cell.styles.textColor = [29, 78, 216];
+            if (v === "H")  data.cell.styles.textColor = [100, 100, 120];
+          }
+          // OVERTIME — amber orange
+          if (ri === 4) data.cell.styles.textColor = [180, 83, 9];
         }
-        // Colour IN TIME row (green) and OUT TIME row (red)
-        if (data.section === "body" && dayIdx >= 0) {
-          if (data.row.index === 0) data.cell.styles.textColor = [21, 128, 61];
-          if (data.row.index === 1) data.cell.styles.textColor = [185, 28, 28];
-          if (data.row.index === 2) data.cell.styles.textColor = [29, 78, 216];
-          if (data.row.index === 4) data.cell.styles.textColor = [194, 65, 12];
-        }
-        // Label column always dark blue bold
+        // Label column — bold navy, left-aligned, light blue tint
         if (data.column.index === 0 && data.section === "body") {
           data.cell.styles.fontStyle = "bold";
           data.cell.styles.fontSize  = 5.5;
           data.cell.styles.textColor = [22, 48, 110];
           data.cell.styles.halign    = "left";
-          data.cell.styles.fillColor = [235, 240, 252];
+          data.cell.styles.fillColor = [232, 238, 255];
+        }
+        // Label column in head — same tint
+        if (data.column.index === 0 && data.section === "head") {
+          data.cell.styles.fillColor = [15, 35, 90];
         }
       },
       showHead: "everyPage",
