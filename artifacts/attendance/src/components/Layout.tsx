@@ -177,6 +177,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [searchData,     setSearchData]     = useState<{ employees: any[]; branches: any[] } | null>(null);
   const [searchFetching, setSearchFetching] = useState(false);
   const [notifOpen,      setNotifOpen]      = useState(false);
+  const [notifSeenCount, setNotifSeenCount] = useState(0);
   const [userMenuOpen,   setUserMenuOpen]   = useState(false);
   const { items: notifItems } = useNotifications();
   const notifRef      = useRef<HTMLDivElement>(null);
@@ -676,13 +677,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {/* Notification bell */}
             <div ref={notifRef} className="relative">
               <button
-                onClick={() => setNotifOpen(o => !o)}
+                onClick={() => {
+                  const opening = !notifOpen;
+                  setNotifOpen(opening);
+                  if (opening) setNotifSeenCount(notifItems.length);
+                }}
                 className="relative p-2 text-muted-foreground hover:bg-muted rounded-lg transition-colors"
               >
                 <Bell className="w-[18px] h-[18px]" />
-                {notifItems.length > 0 && (
+                {notifItems.length > notifSeenCount && (
                   <span className="absolute top-1 right-1 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 border-2 border-card">
-                    {notifItems.length > 9 ? "9+" : notifItems.length}
+                    {notifItems.length - notifSeenCount > 9 ? "9+" : notifItems.length - notifSeenCount}
                   </span>
                 )}
               </button>
