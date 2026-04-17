@@ -52,6 +52,15 @@ function ExportButtons({
       headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: "bold" },
       alternateRowStyles: { fillColor: [245, 247, 255] },
     });
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      doc.setFontSize(7);
+      doc.setTextColor(150);
+      doc.text("Powered by Live U (Pvt) Ltd", pageW / 2, pageH - 6, { align: "center" });
+    }
     doc.save(`${filename}.pdf`);
   }
 

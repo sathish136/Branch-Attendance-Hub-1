@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useState, useEffect, useRef } from "react";
-import liveuLogo from "@/assets/liveu-logo.png";
+const liveuLogo = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQCzrc0k5wmNzmItazY38yj1_7K5zAFLMxn-Q&s";
+const sriLankaPostLogo = "https://upload.wikimedia.org/wikipedia/en/c/c1/Sri_Lanka_Post_logo.png";
 import {
   LayoutDashboard,
   Users,
@@ -166,7 +167,7 @@ function getInitials(name: string) {
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const [logoUrl, setLogoUrl] = useState<string>(() => localStorage.getItem("org_logo") || liveuLogo);
+  const [logoUrl, setLogoUrl] = useState<string>(() => localStorage.getItem("org_logo") || sriLankaPostLogo);
   const [now, setNow] = useState(new Date());
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -185,7 +186,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const userRole  = storedUser.role     || "admin";
 
   useEffect(() => {
-    const handler = () => setLogoUrl(localStorage.getItem("org_logo") || "");
+    const handler = () => setLogoUrl(localStorage.getItem("org_logo") || sriLankaPostLogo);
     window.addEventListener("org_logo_updated", handler);
     return () => window.removeEventListener("org_logo_updated", handler);
   }, []);
@@ -257,7 +258,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <>
               <div className="flex-1 min-w-0">
                 <span className="font-bold text-sm tracking-tight text-white block truncate">PostHRMS</span>
-                <span className="text-[10px] text-white/50 block truncate">Liveu Pvr Ltd</span>
+                <span className="text-[10px] text-white/50 block truncate">Live U (Pvt) Ltd</span>
               </div>
               <button
                 onClick={() => setCollapsed(true)}
