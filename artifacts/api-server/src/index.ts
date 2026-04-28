@@ -1,7 +1,7 @@
 import "dotenv/config";
 import http from "http";
-import app from "./app";
-import admsApp from "./adms-server";
+import app from "./app.js";
+import admsApp from "./adms-server.js";
 import { pool } from "@workspace/db";
 
 const port     = Number(process.env["PORT"])      || 3000;
