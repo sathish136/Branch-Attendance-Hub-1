@@ -1,10 +1,11 @@
+import "dotenv/config";
 import http from "http";
 import app from "./app";
 import admsApp from "./adms-server";
 import { pool } from "@workspace/db";
 
-const port = Number(process.env["PORT"]) || 3000;
-const admsPort = 3333;
+const port     = Number(process.env["PORT"])      || 3000;
+const admsPort = Number(process.env["ADMS_PORT"]) || 3333;
 
 async function ensureTables() {
   const client = await pool.connect();
