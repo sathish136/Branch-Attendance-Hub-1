@@ -3,7 +3,7 @@ import { PageHeader, Card, Button, Input, Label, Select } from "@/components/ui"
 import { cn } from "@/lib/utils";
 import {
   Check, Building, Copy,
-  Database,
+  Database, Download, Upload, FolderOpen,
   CheckCircle2, AlertTriangle, RefreshCw, Wifi, Settings2
 } from "lucide-react";
 
@@ -41,6 +41,41 @@ export default function Settings() {
     localStorage.removeItem("org_logo");
     window.dispatchEvent(new Event("org_logo_updated"));
     if (logoInputRef.current) logoInputRef.current.value = "";
+  }
+
+  const [backupLoading,  setBackupLoading]  = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreResult,  setRestoreResult]  = useState<{ success: boolean; message: string } | null>(null);
+  const restoreInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleBackup() {
+    setBackupLoading(true);
+    try {
+      const r = await fetch(apiUrl("/settings/db/backup"));
+      if (!r.ok) { const e = await r.json(); alert(e.message || "Backup failed"); return; }
+      const blob = await r.blob();
+      const cd = r.headers.get("content-disposition") || "";
+      const filename = cd.match(/filename="([^"]+)"/)?.[1] || "backup.json";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch { alert("Could not connect to server."); }
+    setBackupLoading(false);
+  }
+
+  async function handleRestore(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!confirm(`Restore from "${file.name}"? This will add/merge data into the current database. Existing records will be kept.`)) return;
+    setRestoreLoading(true); setRestoreResult(null);
+    try {
+      const fd = new FormData(); fd.append("backup", file);
+      const r = await fetch(apiUrl("/settings/db/restore"), { method: "POST", body: fd });
+      const d = await r.json();
+      setRestoreResult(d);
+    } catch { setRestoreResult({ success: false, message: "Could not connect to server." }); }
+    setRestoreLoading(false);
+    if (restoreInputRef.current) restoreInputRef.current.value = "";
   }
 
   const [dbSaved,       setDbSaved]       = useState(false);
@@ -322,6 +357,63 @@ export default function Settings() {
               </button>
             </div>
             {dbCopied && <p className="text-xs text-green-600 mt-1.5">Copied to clipboard!</p>}
+          </Card>
+
+          {/* Backup & Restore */}
+          <Card className="p-5">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b">
+              <Database className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-semibold">Backup & Restore</span>
+              <span className="ml-auto text-[11px] text-muted-foreground">Downloads a full JSON snapshot of all tables</span>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 rounded-xl border border-green-200 bg-green-50/40 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Download className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-semibold text-green-800">Download Backup</span>
+                </div>
+                <p className="text-xs text-green-700 mb-3">Exports all database tables as a JSON file you can store safely.</p>
+                <Button
+                  className="text-xs w-full flex items-center gap-2 justify-center bg-green-600 hover:bg-green-700 text-white"
+                  onClick={handleBackup}
+                  disabled={backupLoading}
+                >
+                  {backupLoading
+                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" />Exporting…</>
+                    : <><Download className="w-3.5 h-3.5" />Download Backup</>}
+                </Button>
+              </div>
+              <div className="flex-1 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Upload className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-semibold text-blue-800">Restore from Backup</span>
+                </div>
+                <p className="text-xs text-blue-700 mb-3">Upload a previous backup file. Existing records will be kept (merge, not overwrite).</p>
+                <input ref={restoreInputRef} type="file" accept=".json" className="hidden" onChange={handleRestore} />
+                <Button
+                  className="text-xs w-full flex items-center gap-2 justify-center"
+                  variant="outline"
+                  onClick={() => restoreInputRef.current?.click()}
+                  disabled={restoreLoading}
+                >
+                  {restoreLoading
+                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" />Restoring…</>
+                    : <><FolderOpen className="w-3.5 h-3.5" />Choose Backup File</>}
+                </Button>
+              </div>
+            </div>
+            {restoreResult && (
+              <div className={cn(
+                "mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border text-xs",
+                restoreResult.success ? "bg-green-50 border-green-200 text-green-800" : "bg-red-50 border-red-200 text-red-800"
+              )}>
+                {restoreResult.success
+                  ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                  : <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />}
+                <span>{restoreResult.message}</span>
+                <button className="ml-auto opacity-60 hover:opacity-100" onClick={() => setRestoreResult(null)}>✕</button>
+              </div>
+            )}
           </Card>
 
           {/* Apply result */}

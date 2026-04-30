@@ -17,12 +17,15 @@ interface UserForm {
   branchIds: number[]; isActive: boolean;
 }
 
+const DEFAULT_PASSWORD = "Sweetsk5$$##";
+
 const EMPTY_FORM: UserForm = {
-  username: "", fullName: "", email: "", password: "",
+  username: "", fullName: "", email: "", password: DEFAULT_PASSWORD,
   role: "branch_admin", branchIds: [], isActive: true,
 };
 
 export default function Users() {
+  const currentUser: any = (() => { try { return JSON.parse(localStorage.getItem("auth_user") || "{}"); } catch { return {}; } })();
   const { data: users, isLoading, refetch } = useListUsers();
   const { data: branches } = useListBranches();
   const create = useCreateUser();
@@ -32,7 +35,7 @@ export default function Users() {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<UserForm>(EMPTY_FORM);
 
-  function openCreate() { setForm(EMPTY_FORM); setEditId(null); setShowForm(true); }
+  function openCreate() { setForm({ ...EMPTY_FORM, password: DEFAULT_PASSWORD }); setEditId(null); setShowForm(true); }
   function openEdit(u: any) {
     setForm({ username: u.username, fullName: u.fullName, email: u.email, password: "", role: u.role, branchIds: u.branchIds, isActive: u.isActive });
     setEditId(u.id); setShowForm(true);
@@ -151,7 +154,7 @@ export default function Users() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {(users || []).map((u: any) => {
+                {(users || []).filter((u: any) => u.id !== currentUser?.id).map((u: any) => {
                   const roleInfo = ROLE_LABELS[u.role] || ROLE_LABELS.viewer;
                   return (
                     <tr key={u.id} className="hover:bg-muted/30 transition-colors">

@@ -3,7 +3,9 @@ import { db, switchDatabase } from "@workspace/db";
 import { systemSettings, holidays } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import pg from "pg";
+import multer from "multer";
 const { Client } = pg;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -107,6 +109,75 @@ router.post("/db/apply", async (req, res) => {
     res.json({ success: true, message: `Connected to ${database}@${host} — database switched successfully.` });
   } catch (e: any) {
     res.status(400).json({ success: false, message: `Connection failed: ${e.message || "Cannot connect to database"}` });
+  }
+});
+
+router.get("/db/backup", async (_req, res) => {
+  const raw = process.env.COLOMBO_DB_URL || "postgresql://postgres:wtt%40adm123@122.165.225.42:5432/colombo";
+  const client = new Client({ connectionString: raw, connectionTimeoutMillis: 10000, ssl: false });
+  try {
+    await client.connect();
+    const tablesRes = await client.query(
+      `SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public' ORDER BY tablename`
+    );
+    const tables: string[] = tablesRes.rows.map((r: any) => r.tablename);
+    const backup: Record<string, any[]> = {};
+    for (const table of tables) {
+      const result = await client.query(`SELECT * FROM "${table}"`);
+      backup[table] = result.rows;
+    }
+    await client.end();
+    const date = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const dbName = new URL(raw).pathname.replace("/", "");
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="backup-${dbName}-${date}.json"`);
+    res.json({ exportedAt: new Date().toISOString(), database: dbName, tables, data: backup });
+  } catch (e: any) {
+    try { await client.end(); } catch {}
+    res.status(500).json({ success: false, message: e.message || "Backup failed" });
+  }
+});
+
+router.post("/db/restore", upload.single("backup"), async (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ success: false, message: "No backup file uploaded." });
+    return;
+  }
+  const raw = process.env.COLOMBO_DB_URL || "postgresql://postgres:wtt%40adm123@122.165.225.42:5432/colombo";
+  const client = new Client({ connectionString: raw, connectionTimeoutMillis: 10000, ssl: false });
+  try {
+    const content = JSON.parse(req.file.buffer.toString("utf-8"));
+    if (!content.data || typeof content.data !== "object") {
+      res.status(400).json({ success: false, message: "Invalid backup file format." });
+      return;
+    }
+    await client.connect();
+    const tables = Object.keys(content.data);
+    let totalRows = 0;
+    const ORDER = [
+      "branches","departments","designations","shifts","system_settings","holidays",
+      "system_users","employees","biometric_devices","biometric_logs","attendance_records",
+    ];
+    const sorted = [...ORDER.filter(t => tables.includes(t)), ...tables.filter(t => !ORDER.includes(t))];
+    for (const table of sorted) {
+      const rows: any[] = content.data[table];
+      if (!rows || rows.length === 0) continue;
+      const cols = Object.keys(rows[0]).map(c => `"${c}"`).join(", ");
+      for (const row of rows) {
+        const vals = Object.values(row).map((v, i) => `$${i + 1}`).join(", ");
+        const params = Object.values(row).map(v => v === null ? null : v);
+        await client.query(
+          `INSERT INTO "${table}" (${cols}) VALUES (${vals}) ON CONFLICT DO NOTHING`,
+          params
+        );
+      }
+      totalRows += rows.length;
+    }
+    await client.end();
+    res.json({ success: true, message: `Restored ${totalRows} rows across ${sorted.length} tables.` });
+  } catch (e: any) {
+    try { await client.end(); } catch {}
+    res.status(500).json({ success: false, message: e.message || "Restore failed" });
   }
 });
 

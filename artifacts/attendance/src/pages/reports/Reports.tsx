@@ -30,6 +30,15 @@ function diffHrs(a: string, b: string) {
   return ((new Date(b).getTime() - new Date(a).getTime()) / 3_600_000);
 }
 
+function fmtDuration(hrs: number | null | undefined): string {
+  if (hrs == null || hrs <= 0) return "—";
+  const h = Math.floor(hrs);
+  const m = Math.round((hrs - h) * 60);
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} hr`;
+  return `${h} hr ${m} min`;
+}
+
 function ExportButtons({
   getHeaders, getRows, filename, disabled,
 }: {
@@ -336,8 +345,8 @@ function AttendanceReport() {
                     </td>
                     <td className="px-3 py-2 font-mono">{r.inTime1  ? fmt(r.inTime1)  : "—"}</td>
                     <td className="px-3 py-2 font-mono">{r.outTime1 ? fmt(r.outTime1) : "—"}</td>
-                    <td className="px-3 py-2 font-mono">{r.totalHours     != null ? `${r.totalHours.toFixed(1)}h`     : "—"}</td>
-                    <td className="px-3 py-2 font-mono">{r.overtimeHours != null && r.overtimeHours > 0 ? `${r.overtimeHours.toFixed(1)}h` : "—"}</td>
+                    <td className="px-3 py-2 font-mono">{fmtDuration(r.totalHours)}</td>
+                    <td className="px-3 py-2 font-mono">{r.overtimeHours != null && r.overtimeHours > 0 ? fmtDuration(r.overtimeHours) : "—"}</td>
                   </tr>
                 ))}
                 {!data?.records?.length && (
@@ -430,8 +439,8 @@ function MonthlyReport() {
                     <td className="px-3 py-2 text-center text-yellow-600 font-semibold">{e.halfDays}</td>
                     <td className="px-3 py-2 text-center text-purple-600 font-semibold">{e.leaveDays}</td>
                     <td className="px-3 py-2 text-center text-gray-600 font-semibold">{e.holidayDays}</td>
-                    <td className="px-3 py-2 text-center font-mono">{e.totalWorkHours.toFixed(1)}h</td>
-                    <td className="px-3 py-2 text-center font-mono text-amber-600">{e.overtimeHours.toFixed(1)}h</td>
+                    <td className="px-3 py-2 text-center font-mono">{fmtDuration(e.totalWorkHours)}</td>
+                    <td className="px-3 py-2 text-center font-mono text-amber-600">{fmtDuration(e.overtimeHours)}</td>
                     <td className="px-3 py-2 text-center">
                       <span className={cn("px-2 py-0.5 rounded text-xs font-bold",
                         e.attendancePercentage >= 90 ? "bg-green-100 text-green-700" :
@@ -491,7 +500,7 @@ function OvertimeReport() {
 
       {data && (
         <Card className="p-3 flex gap-6 text-sm border-amber-200 bg-amber-50/30">
-          <div><span className="text-muted-foreground">Total OT Hours: </span><strong className="text-amber-700">{data.totalOvertimeHours.toFixed(1)}h</strong></div>
+          <div><span className="text-muted-foreground">Total OT Hours: </span><strong className="text-amber-700">{fmtDuration(data.totalOvertimeHours)}</strong></div>
           <div><span className="text-muted-foreground">Employees with OT: </span><strong>{data.employees.length}</strong></div>
         </Card>
       )}
@@ -513,9 +522,9 @@ function OvertimeReport() {
                     <td className="px-3 py-2 text-muted-foreground whitespace-nowrap max-w-[100px] truncate">{e.branchName}</td>
                     <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{e.designation}</td>
                     <td className="px-3 py-2 text-center font-semibold text-amber-600">{e.overtimeDays}</td>
-                    <td className="px-3 py-2 text-center font-bold text-amber-700">{e.totalOvertimeHours.toFixed(1)}h</td>
+                    <td className="px-3 py-2 text-center font-bold text-amber-700">{fmtDuration(e.totalOvertimeHours)}</td>
                     <td className="px-3 py-2 text-muted-foreground">
-                      {e.records.slice(0,3).map(r => `${r.date}: ${r.overtimeHours.toFixed(1)}h`).join(" | ")}
+                      {e.records.slice(0,3).map(r => `${r.date}: ${fmtDuration(r.overtimeHours)}`).join(" | ")}
                       {e.records.length > 3 && ` +${e.records.length-3} more`}
                     </td>
                   </tr>
@@ -706,7 +715,7 @@ function SplitReport() {
                     <td className="px-3 py-2 text-center border-l border-border"><SessionCell time={r.lastIn}   type="in"  /></td>
                     <td className="px-3 py-2 text-center">                      <SessionCell time={r.lastOut}  type="out" /></td>
                     <td className="px-3 py-2 text-center font-bold text-blue-700 font-mono border-l border-border whitespace-nowrap">
-                      {r.totalHrs > 0 ? `${r.totalHrs.toFixed(1)}h` : "—"}
+                      {fmtDuration(r.totalHrs)}
                     </td>
                   </tr>
                 ))}

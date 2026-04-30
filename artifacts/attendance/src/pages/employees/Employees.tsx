@@ -11,7 +11,7 @@ import {
   MapPin, X, Building2, Users, Layers,
   FileText, Upload, CheckCircle2, AlertCircle, UserCircle,
   Briefcase, Phone, Hash, CreditCard, Calendar,
-  IdCard, Home, Shield, Camera
+  IdCard, Home, Shield, Camera, Radio
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -250,13 +250,22 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
         setTab("professional");
       }
     };
+    function triggerBioSync() {
+      fetch(apiUrl("/biometric/reprocess"), { method: "POST" }).catch(() => {});
+    }
     if (emp?.id) {
       updateEmp.mutate({ id: emp.id, data: payload }, {
-        onSuccess: (data) => { if (data?.code === "INVALID_EMPLOYEE_ID") { onError(data); } else { onSaved(); } }
+        onSuccess: (data) => {
+          if (data?.code === "INVALID_EMPLOYEE_ID") { onError(data); }
+          else { if (payload.biometricId) triggerBioSync(); onSaved(); }
+        }
       });
     } else {
       createEmp.mutate({ data: payload }, {
-        onSuccess: (data) => { if (data?.code === "INVALID_EMPLOYEE_ID") { onError(data); } else { onSaved(); } }
+        onSuccess: (data) => {
+          if (data?.code === "INVALID_EMPLOYEE_ID") { onError(data); }
+          else { if (payload.biometricId) triggerBioSync(); onSaved(); }
+        }
       });
     }
   }
@@ -553,11 +562,21 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
                       {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </Select>
                   </div>
-                  <div>
-                    <Label className="text-xs font-semibold mb-1.5 block">Biometric Device ID</Label>
-                    <div className="relative">
-                      <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                      <Input className="pl-8" placeholder="e.g. 101" value={form.biometricId} onChange={e => set("biometricId", e.target.value)} />
+                  <div className="col-span-2">
+                    <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Radio className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <Label className="text-xs font-bold text-blue-800">Biometric Device ID (PIN)</Label>
+                        <span className="ml-auto text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Auto-sync on save</span>
+                      </div>
+                      <div className="relative">
+                        <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-blue-400" />
+                        <Input className="pl-8 border-blue-200 bg-white focus:border-blue-400" placeholder="e.g. 101" value={form.biometricId} onChange={e => set("biometricId", e.target.value)} />
+                      </div>
+                      <p className="text-[10px] text-blue-600 mt-1.5 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 shrink-0" />
+                        Saving with a Biometric ID will automatically sync all past attendance data from the device.
+                      </p>
                     </div>
                   </div>
                 </div>
