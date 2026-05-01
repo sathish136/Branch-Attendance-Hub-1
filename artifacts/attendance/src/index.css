@@ -26,26 +26,26 @@
 }
 
 :root {
-  /* Green Theme base on #5db75c -> HSL 119 41% 54% */
-  --background: 120 20% 98%;
+  /* Sri Lanka Post Theme — Red #CC1F2A + Gold #C49A2A */
+  --background: 0 0% 98%;
   --foreground: 220 20% 15%;
   
-  --primary: 119 41% 54%;
+  --primary: 357 73% 46%;
   --primary-foreground: 0 0% 100%;
   
-  --muted: 120 10% 92%;
-  --muted-foreground: 220 15% 45%;
+  --muted: 0 8% 94%;
+  --muted-foreground: 220 12% 46%;
   
   --border: 220 15% 90%;
   --input: 220 15% 92%;
-  --ring: 119 41% 54%;
+  --ring: 357 73% 46%;
   
   --card: 0 0% 100%;
   --card-foreground: 220 20% 15%;
 
-  --sidebar: 220 30% 12%;
+  --sidebar: 220 28% 13%;
   --sidebar-foreground: 220 20% 80%;
-  --sidebar-active: 119 41% 54%;
+  --sidebar-active: 357 73% 46%;
 }
 
 @layer base {

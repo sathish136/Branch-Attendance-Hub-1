@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Mail, Lock, AlertCircle, Shield, Clock, Users, BarChart3, Eye, EyeOff } from "lucide-react";
-import liveuLogo from "@/assets/liveu-logo.png";
-const liveULogo = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQCzrc0k5wmNzmItazY38yj1_7K5zAFLMxn-Q&s";
+import srilankaPostLogo from "@/assets/srilanka-post-logo.png";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -78,23 +77,23 @@ export default function Login() {
         .form-row:nth-child(3){ animation: count-in .45s .54s both }
         .input-mod {
           width:100%; padding:.625rem .875rem .625rem 2.6rem;
-          background:#f8faf8; border:1.5px solid #e4ebe4;
-          border-radius:.75rem; font-size:.875rem; color:#1a2e1a;
+          background:#faf8f8; border:1.5px solid #ebe4e4;
+          border-radius:.75rem; font-size:.875rem; color:#1a1515;
           outline:none; transition: border-color .2s, box-shadow .2s, background .2s;
         }
         .input-mod:focus {
-          border-color:hsl(119 41% 54%); background:#fff;
-          box-shadow:0 0 0 3px hsl(119 41% 54% / .15);
+          border-color:hsl(357 73% 46%); background:#fff;
+          box-shadow:0 0 0 3px hsl(357 73% 46% / .15);
         }
         .btn-primary {
           width:100%; padding:.75rem; border-radius:.875rem; font-size:.9375rem;
           font-weight:600; color:#fff; border:none; cursor:pointer;
-          background: linear-gradient(135deg,hsl(119 41% 50%),hsl(130 50% 42%));
-          box-shadow: 0 4px 18px hsl(119 41% 54% / .4);
+          background: linear-gradient(135deg,hsl(357 73% 48%),hsl(357 73% 38%));
+          box-shadow: 0 4px 18px hsl(357 73% 46% / .4);
           transition: opacity .2s, transform .15s, box-shadow .2s;
           position:relative; overflow:hidden;
         }
-        .btn-primary:hover:not(:disabled){ opacity:.92; transform:translateY(-1px); box-shadow:0 6px 24px hsl(119 41% 54% / .5); }
+        .btn-primary:hover:not(:disabled){ opacity:.92; transform:translateY(-1px); box-shadow:0 6px 24px hsl(357 73% 46% / .5); }
         .btn-primary:active:not(:disabled){ transform:translateY(0); }
         .btn-primary:disabled{ opacity:.7; cursor:not-allowed; }
         .btn-primary::after { content:''; position:absolute; inset:0;
@@ -110,21 +109,21 @@ export default function Login() {
 
           {/* Animated blobs */}
           <div className="anim-blob absolute w-[480px] h-[480px] -top-24 -left-24 opacity-[.08]"
-            style={{ background: "hsl(119 41% 54%)", filter: "blur(2px)" }} />
+            style={{ background: "hsl(357 73% 46%)", filter: "blur(2px)" }} />
           <div className="anim-blob absolute w-[360px] h-[360px] bottom-0 right-0 opacity-[.06]"
-            style={{ background: "hsl(210 80% 60%)", animationDelay: "-4s", filter: "blur(2px)" }} />
+            style={{ background: "hsl(43 65% 47%)", animationDelay: "-4s", filter: "blur(2px)" }} />
 
           {/* Floating circles */}
           <div className="anim-float1 absolute top-[15%] right-[12%] w-28 h-28 rounded-full border border-white/8"
             style={{ background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,.06), transparent)" }} />
           <div className="anim-float2 absolute bottom-[20%] left-[8%] w-20 h-20 rounded-full border border-white/6"
-            style={{ background: "radial-gradient(circle at 30% 30%, rgba(93,183,92,.08), transparent)" }} />
+            style={{ background: "radial-gradient(circle at 30% 30%, rgba(204,31,42,.08), transparent)" }} />
           <div className="anim-float3 absolute top-[55%] right-[22%] w-12 h-12 rounded-full"
-            style={{ background: "hsl(119 41% 54% / .12)", border: "1px solid hsl(119 41% 54% / .2)" }} />
+            style={{ background: "hsl(357 73% 46% / .12)", border: "1px solid hsl(357 73% 46% / .2)" }} />
 
           {/* Spinning ring */}
           <div className="anim-spin absolute top-[30%] left-[5%] w-40 h-40 rounded-full opacity-10"
-            style={{ border: "1.5px dashed hsl(119 41% 54%)" }} />
+            style={{ border: "1.5px dashed hsl(357 73% 46%)" }} />
 
           {/* Grid dots pattern */}
           <div className="absolute inset-0 opacity-[.03]"
@@ -136,13 +135,13 @@ export default function Login() {
             <div className="flex items-center gap-3">
               <div className="relative">
                 <div className="anim-pulse-ring absolute inset-0 rounded-full"
-                  style={{ background: "hsl(119 41% 54% / .4)" }} />
-                <img src={liveuLogo} alt="PostHRMS" className="w-12 h-12 rounded-full relative object-cover"
-                  style={{ boxShadow: "0 0 20px hsl(119 41% 54% / .5)" }} />
+                  style={{ background: "hsl(357 73% 46% / .4)" }} />
+                <img src={srilankaPostLogo} alt="Sri Lanka Post" className="w-12 h-12 rounded-xl relative object-contain bg-white p-0.5"
+                  style={{ boxShadow: "0 0 20px hsl(357 73% 46% / .5)" }} />
               </div>
               <div>
-                <p className="font-bold text-white text-base tracking-tight leading-none">PostHRMS</p>
-                <p className="text-white/40 text-[11px] mt-0.5">Sri Lanka Post · Colombo District</p>
+                <p className="font-bold text-white text-base tracking-tight leading-none">Sri Lanka Post</p>
+                <p className="text-white/40 text-[11px] mt-0.5">Colombo</p>
               </div>
             </div>
 
@@ -154,7 +153,7 @@ export default function Login() {
               </div>
               <h1 className="text-4xl font-bold text-white leading-tight tracking-tight">
                 Workforce<br />
-                <span style={{ color: "hsl(119 41% 60%)" }}>Intelligence</span><br />
+                <span style={{ color: "hsl(357 73% 70%)" }}>Intelligence</span><br />
                 Platform
               </h1>
               <p className="mt-4 text-white/45 text-[14px] leading-relaxed max-w-xs">
@@ -166,8 +165,8 @@ export default function Login() {
                 {features.map((f, i) => (
                   <div key={i} className="feature-row flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                      style={{ background: "hsl(119 41% 54% / .15)", border: "1px solid hsl(119 41% 54% / .2)" }}>
-                      <f.icon className="w-4 h-4" style={{ color: "hsl(119 41% 65%)" }} />
+                      style={{ background: "hsl(357 73% 46% / .15)", border: "1px solid hsl(357 73% 46% / .2)" }}>
+                      <f.icon className="w-4 h-4" style={{ color: "hsl(357 73% 70%)" }} />
                     </div>
                     <div>
                       <p className="text-white text-[13px] font-semibold leading-none">{f.title}</p>
@@ -188,15 +187,15 @@ export default function Login() {
 
         {/* ── RIGHT PANEL — login form ── */}
         <div className={`flex-1 flex items-center justify-center p-8 ${mounted ? "panel-right" : "opacity-0"}`}
-          style={{ background: "#f0f4f0" }}>
+          style={{ background: "#f7f7f8" }}>
 
           <div className="w-full max-w-sm">
 
             {/* Mobile brand */}
             <div className="flex lg:hidden items-center gap-3 mb-8 justify-center">
-              <img src={liveuLogo} alt="PostHRMS" className="w-10 h-10 rounded-full object-cover"
-                style={{ boxShadow: "0 2px 10px hsl(119 41% 54% / .4)" }} />
-              <p className="font-bold text-gray-900 text-lg">PostHRMS</p>
+              <img src={srilankaPostLogo} alt="Sri Lanka Post" className="w-10 h-10 rounded-xl object-contain bg-white p-0.5"
+                style={{ boxShadow: "0 2px 10px hsl(357 73% 46% / .4)" }} />
+              <p className="font-bold text-gray-900 text-lg">Sri Lanka Post</p>
             </div>
 
             {/* Form card */}
@@ -272,14 +271,14 @@ export default function Login() {
               </form>
 
               <div className="mt-6 pt-5 border-t border-gray-100 flex items-center justify-center gap-2">
-                <img src={liveULogo} alt="Live U (Pvt) Ltd" className="w-5 h-5 rounded-full object-cover" />
-                <p className="text-[11px] text-gray-400">Powered by <span className="font-semibold text-gray-500">Live U (Pvt) Ltd</span> · ZKTeco Integrated</p>
+                <img src={srilankaPostLogo} alt="Sri Lanka Post" className="w-5 h-5 rounded object-contain" />
+                <p className="text-[11px] text-gray-400">Powered by <span className="font-semibold text-gray-500">Sri Lanka Post</span> · ZKTeco Integrated</p>
               </div>
             </div>
 
             {/* Bottom note */}
             <p className="text-center text-[11px] text-gray-400 mt-5">
-              Sri Lanka Post · Colombo District © {new Date().getFullYear()} · PostHRMS v2.0
+              Sri Lanka Post · Colombo © {new Date().getFullYear()}
             </p>
           </div>
         </div>

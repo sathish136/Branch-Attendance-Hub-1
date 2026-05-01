@@ -5,7 +5,7 @@ import admsApp from "./adms-server.js";
 import { pool } from "@workspace/db";
 
 const port     = Number(process.env["PORT"])      || 3000;
-const admsPort = Number(process.env["ADMS_PORT"]) || 3333;
+const admsPort = Number(process.env["ADMS_PORT"]) || 3334;
 
 async function ensureTables() {
   const client = await pool.connect();
@@ -70,6 +70,13 @@ async function start() {
   });
 
   const admsServer = http.createServer(admsApp);
+  admsServer.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.warn(`[ADMS] Port ${admsPort} already in use — ADMS server not started.`);
+    } else {
+      console.error("[ADMS] Server error:", err);
+    }
+  });
   admsServer.listen(admsPort, () => {
     console.log(`ADMS (ZKTeco Push) server listening on port ${admsPort}`);
   });
