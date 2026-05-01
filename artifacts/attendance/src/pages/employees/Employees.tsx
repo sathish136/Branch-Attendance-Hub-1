@@ -178,7 +178,7 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
   const desigOptions: string[] = Array.isArray(apiDesigs) ? apiDesigs.map((d: any) => d.name) : [];
 
   const [tab, setTab] = useState<"personal"|"professional"|"documents">("personal");
-  const defaultBranchId = branches[0]?.id || 0;
+  const defaultBranchId = (branches.find((b: any) => b.type === "regional") || branches.find((b: any) => b.type !== "head_office") || branches[0])?.id || 0;
   const [form, setForm] = useState(emp ? {
     ...EMPTY_EMP, ...emp,
     firstName: emp.firstName || "",
@@ -249,6 +249,11 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
     }
     if (!form.branchId || form.branchId === 0) {
       setFormError("Please select a branch.");
+      setTab("professional");
+      return;
+    }
+    if (!form.employeeId?.trim()) {
+      setEmpIdError("Employee ID is required. Select a branch to auto-generate one.");
       setTab("professional");
       return;
     }
@@ -1049,7 +1054,7 @@ export default function Employees() {
                   <tbody className="divide-y divide-border">
                     {employees.map((emp: any) => (
                       <tr key={emp.id} className="hover:bg-muted/30 transition-colors group">
-                        <td className="px-3 py-2.5 font-mono text-xs text-primary font-medium">{emp.employeeId}</td>
+                        <td className="px-3 py-2.5 font-mono text-xs text-primary font-medium">{emp.employeeId || <span className="text-muted-foreground">—</span>}</td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-2.5">
                             <div className="w-8 h-8 rounded-full bg-muted/60 border border-border overflow-hidden shrink-0 flex items-center justify-center">

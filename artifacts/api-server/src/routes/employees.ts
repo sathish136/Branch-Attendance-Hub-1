@@ -29,12 +29,12 @@ function sanitizeEmployeeBody(body: Record<string, any>) {
 async function getRegionalInfo(branchId: number): Promise<{ regionalCode: string; regionalId: number; regionalName: string } | null> {
   const [branch] = await db.select().from(branches).where(eq(branches.id, branchId));
   if (!branch) return null;
-  if (branch.type === "regional") {
+  if (branch.type === "head_office" || branch.type === "regional") {
     return { regionalCode: branch.code, regionalId: branch.id, regionalName: branch.name };
   }
   if (branch.type === "sub_branch" && branch.parentId) {
     const [parent] = await db.select().from(branches).where(eq(branches.id, branch.parentId));
-    if (parent && parent.type === "regional") {
+    if (parent) {
       return { regionalCode: parent.code, regionalId: parent.id, regionalName: parent.name };
     }
   }
