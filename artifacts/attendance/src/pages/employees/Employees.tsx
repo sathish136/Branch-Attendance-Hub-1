@@ -194,6 +194,7 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
   const photoRef = useRef<HTMLInputElement>(null);
   const [regionalInfo, setRegionalInfo] = useState<{ prefix: string; nextId: string; regionalName: string } | null>(null);
   const [empIdError, setEmpIdError] = useState<string>("");
+  const [formError, setFormError] = useState<string>("");
 
   useEffect(() => {
     if (emp) return;
@@ -237,6 +238,20 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
 
   function handleSave() {
     setEmpIdError("");
+    setFormError("");
+
+    // Validate required fields
+    if (!form.firstName?.trim()) {
+      setFormError("First name is required.");
+      setTab("personal");
+      return;
+    }
+    if (!form.joiningDate) {
+      setFormError("Joining date is required.");
+      setTab("professional");
+      return;
+    }
+
     const payload = {
       ...form,
       fullName: `${form.firstName} ${form.lastName}`.trim() || form.firstName || "Employee",
@@ -627,11 +642,19 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
         </div>
 
         {tab !== "documents" && (
-          <div className="border-t border-border px-5 py-4 flex justify-end gap-3 bg-muted/20">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button onClick={handleSave} disabled={isPending}>
-              {isPending ? "Saving..." : emp ? "Update Employee" : "Create Employee"}
-            </Button>
+          <div className="border-t border-border px-5 py-4 bg-muted/20">
+            {formError && (
+              <p className="text-xs text-red-500 font-medium mb-3 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {formError}
+              </p>
+            )}
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button onClick={handleSave} disabled={isPending}>
+                {isPending ? "Saving..." : emp ? "Update Employee" : "Create Employee"}
+              </Button>
+            </div>
           </div>
         )}
       </div>

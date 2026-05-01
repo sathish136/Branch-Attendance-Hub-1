@@ -6,12 +6,17 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
-const DATE_FIELDS = ["joiningDate", "dateOfBirth"];
-const INT_FIELDS  = ["branchId", "shiftId", "reportingManagerId"];
+const NULLABLE_DATE_FIELDS = ["dateOfBirth"];
+const INT_FIELDS = ["branchId", "shiftId", "reportingManagerId"];
 
 function sanitizeEmployeeBody(body: Record<string, any>) {
   const out = { ...body };
-  for (const f of DATE_FIELDS) {
+  // joiningDate is NOT NULL — default to today if missing
+  if (!out.joiningDate || out.joiningDate === "") {
+    out.joiningDate = new Date().toISOString().slice(0, 10);
+  }
+  // other date fields are nullable
+  for (const f of NULLABLE_DATE_FIELDS) {
     if (out[f] === "" || out[f] === undefined) out[f] = null;
   }
   for (const f of INT_FIELDS) {
