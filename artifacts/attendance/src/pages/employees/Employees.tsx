@@ -510,16 +510,26 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
                     <div className="relative">
                       <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                       <Input
-                        className={cn("pl-8 font-mono uppercase", empIdError ? "border-red-400 focus:border-red-500" : "")}
+                        className={cn(
+                          "pl-8 font-mono uppercase",
+                          empIdError ? "border-red-400 focus:border-red-500" : "",
+                          emp ? "bg-muted/60 cursor-not-allowed text-muted-foreground" : ""
+                        )}
                         placeholder={regionalInfo ? `${regionalInfo.prefix}001` : "EMP-0001"}
                         value={form.employeeId}
                         onChange={e => { set("employeeId", e.target.value.toUpperCase()); setEmpIdError(""); }}
                         disabled={!!emp}
+                        title={emp ? "Employee ID cannot be changed after creation" : ""}
                       />
                     </div>
                     {empIdError ? (
                       <p className="text-xs text-red-500 flex items-start gap-1 mt-1.5">
                         <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />{empIdError}
+                      </p>
+                    ) : emp ? (
+                      <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                        <Shield className="w-3 h-3 shrink-0" />
+                        Employee ID is permanent and cannot be changed.
                       </p>
                     ) : regionalInfo && !emp ? (
                       <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
