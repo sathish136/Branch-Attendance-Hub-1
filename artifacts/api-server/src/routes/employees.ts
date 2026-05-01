@@ -20,7 +20,7 @@ function sanitizeEmployeeBody(body: Record<string, any>) {
     if (out[f] === "" || out[f] === undefined) out[f] = null;
   }
   for (const f of INT_FIELDS) {
-    if (out[f] === "" || out[f] === undefined) out[f] = null;
+    if (out[f] === "" || out[f] === undefined || out[f] === 0 || out[f] === "0") out[f] = null;
     else if (out[f] !== null) out[f] = Number(out[f]);
   }
   return out;
