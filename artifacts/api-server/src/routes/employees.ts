@@ -6,6 +6,21 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
+const DATE_FIELDS = ["joiningDate", "dateOfBirth"];
+const INT_FIELDS  = ["branchId", "shiftId", "reportingManagerId"];
+
+function sanitizeEmployeeBody(body: Record<string, any>) {
+  const out = { ...body };
+  for (const f of DATE_FIELDS) {
+    if (out[f] === "" || out[f] === undefined) out[f] = null;
+  }
+  for (const f of INT_FIELDS) {
+    if (out[f] === "" || out[f] === undefined) out[f] = null;
+    else if (out[f] !== null) out[f] = Number(out[f]);
+  }
+  return out;
+}
+
 async function getRegionalInfo(branchId: number): Promise<{ regionalCode: string; regionalId: number; regionalName: string } | null> {
   const [branch] = await db.select().from(branches).where(eq(branches.id, branchId));
   if (!branch) return null;
@@ -194,7 +209,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const body = { ...req.body };
+    const body = sanitizeEmployeeBody(req.body);
     if (body.firstName && body.lastName) {
       body.fullName = `${body.firstName} ${body.lastName}`;
     }
@@ -227,7 +242,7 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const dbId = Number(req.params.id);
-    const body = { ...req.body };
+    const body = sanitizeEmployeeBody(req.body);
     if (body.firstName && body.lastName) {
       body.fullName = `${body.firstName} ${body.lastName}`;
     }
