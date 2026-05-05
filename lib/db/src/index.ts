@@ -12,6 +12,7 @@ export const DB_URL_PATH = join(tmpdir(), ".colombo_db_url");
 
 function getConnectionString() {
   if (process.env.COLOMBO_DB_URL) return process.env.COLOMBO_DB_URL;
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
   try {
     const url = readFileSync(DB_URL_PATH, "utf-8").trim();
     if (url) return url;
