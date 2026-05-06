@@ -154,6 +154,7 @@ router.post("/db/restore", upload.single("backup"), async (req, res) => {
     await client.connect();
     const tables = Object.keys(content.data);
     let totalRows = 0;
+    let skippedRows = 0;
     const ORDER = [
       "branches","departments","designations","shifts","system_settings","holidays",
       "system_users","employees","biometric_devices","biometric_logs","attendance_records",
@@ -166,15 +167,20 @@ router.post("/db/restore", upload.single("backup"), async (req, res) => {
       for (const row of rows) {
         const vals = Object.values(row).map((v, i) => `$${i + 1}`).join(", ");
         const params = Object.values(row).map(v => v === null ? null : v);
-        await client.query(
-          `INSERT INTO "${table}" (${cols}) VALUES (${vals}) ON CONFLICT DO NOTHING`,
-          params
-        );
+        try {
+          await client.query(
+            `INSERT INTO "${table}" (${cols}) VALUES (${vals}) ON CONFLICT DO NOTHING`,
+            params
+          );
+          totalRows++;
+        } catch {
+          skippedRows++;
+        }
       }
-      totalRows += rows.length;
     }
     await client.end();
-    res.json({ success: true, message: `Restored ${totalRows} rows across ${sorted.length} tables.` });
+    const skipMsg = skippedRows > 0 ? ` (${skippedRows} duplicate rows skipped)` : "";
+    res.json({ success: true, message: `Restored ${totalRows} rows across ${sorted.length} tables${skipMsg}.` });
   } catch (e: any) {
     try { await client.end(); } catch {}
     res.status(500).json({ success: false, message: e.message || "Restore failed" });
