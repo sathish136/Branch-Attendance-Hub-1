@@ -9,7 +9,6 @@ const app: Express = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.text({ type: "*/*", limit: "10mb" }));
 app.use(cookieParser());
 
 app.use("/iclock", admsRouter);
