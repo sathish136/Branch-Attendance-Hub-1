@@ -26,3 +26,8 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+COLOMBO_DB_URL = "postgresql://postgres:wtt%40adm123@122.165.225.42:5432/colombo"
