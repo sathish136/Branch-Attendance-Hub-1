@@ -178,18 +178,17 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
   const desigOptions: string[] = Array.isArray(apiDesigs) ? apiDesigs.map((d: any) => d.name) : [];
 
   const [tab, setTab] = useState<"personal"|"professional"|"documents">("personal");
-  const defaultBranchId = (branches.find((b: any) => b.type === "regional") || branches.find((b: any) => b.type !== "head_office") || branches[0])?.id || 0;
   const [form, setForm] = useState(emp ? {
     ...EMPTY_EMP, ...emp,
     firstName: emp.firstName || "",
     lastName: emp.lastName || (emp.fullName && !emp.firstName ? emp.fullName : ""),
-    branchId: emp.branchId || defaultBranchId,
+    branchId: emp.branchId || 0,
     dateOfBirth: emp.dateOfBirth || "",
     shiftId: emp.shiftId || "",
     reportingManagerId: emp.reportingManagerId || "",
     nicNumber: emp.nicNumber || "",
     passportNumber: emp.passportNumber || "",
-  } : { ...EMPTY_EMP, branchId: defaultBranchId });
+  } : { ...EMPTY_EMP, branchId: 0 });
   const [photoPreview, setPhotoPreview] = useState<string>(emp?.photoUrl || "");
   const [photoUploading, setPhotoUploading] = useState(false);
   const photoRef = useRef<HTMLInputElement>(null);
@@ -248,7 +247,7 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
       return;
     }
     if (!form.branchId || form.branchId === 0) {
-      setFormError("Please select a branch.");
+      setFormError("Branch is required. Please select a branch.");
       setTab("professional");
       return;
     }
@@ -594,9 +593,19 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
                   </div>
                   <div>
                     <Label className="text-xs font-semibold mb-1.5 block">Branch <span className="text-red-500">*</span></Label>
-                    <Select value={form.branchId} onChange={e => set("branchId", Number(e.target.value))}>
-                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    <Select
+                      value={form.branchId || ""}
+                      onChange={e => { set("branchId", Number(e.target.value)); setFormError(""); }}
+                      className={cn(!form.branchId && formError ? "border-red-400 ring-1 ring-red-300" : "")}
+                    >
+                      <option value="">— Select Branch —</option>
+                      {branches.map(b => <option key={b.id} value={b.id}>[{b.code}] {b.name}</option>)}
                     </Select>
+                    {!form.branchId && formError && (
+                      <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 shrink-0" /> Branch is required
+                      </p>
+                    )}
                   </div>
                   <div className="col-span-2">
                     <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3">
