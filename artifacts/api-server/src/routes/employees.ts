@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { employees, branches, shifts, attendanceRecords, payrollRecords, biometricLogs } from "@workspace/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { employees, branches, shifts, attendanceRecords, payrollRecords, biometricLogs, biometricDevices } from "@workspace/db/schema";
+import { eq, inArray, and } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { autoSync } from "../lib/biometric-sync.js";
 
 const NULLABLE_DATE_FIELDS = ["dateOfBirth"];
 const INT_FIELDS = ["branchId", "shiftId", "reportingManagerId"];
@@ -112,6 +113,101 @@ function mapEmp(emp: any, branchName: string, shiftName: string | null) {
     createdAt: emp.createdAt?.toISOString?.() ?? emp.createdAt,
   };
 }
+
+router.get("/import-template", (_req, res) => {
+  const csv = [
+    "Name,Biometric ID",
+    "H.U.R.PRIYANGIKA,2162",
+    "S.S.KANNANGARA,2273",
+    "R.P.PERERA,2280",
+  ].join("\r\n");
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=employee-import-template.csv");
+  res.send(csv);
+});
+
+router.post("/import", async (req, res) => {
+  try {
+    const { branchId, employees: rows } = req.body as {
+      branchId: number;
+      employees: Array<{ name: string; biometricId: string }>;
+    };
+    if (!branchId || !Array.isArray(rows) || rows.length === 0) {
+      res.status(400).json({ message: "branchId and employees[] required", success: false });
+      return;
+    }
+    const [branch] = await db.select().from(branches).where(eq(branches.id, Number(branchId)));
+    if (!branch) { res.status(404).json({ message: "Branch not found", success: false }); return; }
+
+    const branchCode = branch.code.toUpperCase();
+    const today = new Date().toISOString().split("T")[0];
+
+    const results: Array<{ name: string; biometricId: string; employeeId: string; status: "created" | "skipped"; reason?: string }> = [];
+
+    for (const row of rows) {
+      const name = (row.name || "").trim();
+      const bioId = String(row.biometricId || "").trim();
+      if (!name || !bioId) {
+        results.push({ name, biometricId: bioId, employeeId: "", status: "skipped", reason: "Missing name or biometric ID" });
+        continue;
+      }
+      const empId = `${branchCode}${bioId}`;
+
+      const existingBio = await db.select({ id: employees.id }).from(employees)
+        .where(and(eq(employees.biometricId, bioId), eq(employees.branchId, Number(branchId))))
+        .then(r => r[0]);
+      if (existingBio) {
+        results.push({ name, biometricId: bioId, employeeId: empId, status: "skipped", reason: "Biometric ID already exists in this branch" });
+        continue;
+      }
+
+      const existingEmpId = await db.select({ id: employees.id }).from(employees)
+        .where(eq(employees.employeeId, empId))
+        .then(r => r[0]);
+      if (existingEmpId) {
+        results.push({ name, biometricId: bioId, employeeId: empId, status: "skipped", reason: "Employee ID already exists" });
+        continue;
+      }
+
+      const parts = name.trim().split(/\s+/);
+      const firstName = parts[0] || name;
+      const lastName = parts.slice(1).join(" ") || "";
+
+      try {
+        await db.insert(employees).values({
+          employeeId: empId,
+          fullName: name,
+          firstName,
+          lastName,
+          designation: "Staff",
+          department: "General",
+          branchId: Number(branchId),
+          joiningDate: today,
+          email: `${empId.toLowerCase()}@postal.lk`,
+          phone: "",
+          biometricId: bioId,
+          status: "active",
+          employeeType: "permanent",
+        });
+        results.push({ name, biometricId: bioId, employeeId: empId, status: "created" });
+      } catch (e: any) {
+        results.push({ name, biometricId: bioId, employeeId: empId, status: "skipped", reason: e?.message || "Insert error" });
+      }
+    }
+
+    const created = results.filter(r => r.status === "created").length;
+    const skipped = results.filter(r => r.status === "skipped").length;
+
+    if (created > 0) {
+      const devicesList = await db.select().from(biometricDevices).where(eq(biometricDevices.branchId, Number(branchId)));
+      for (const dev of devicesList) {
+        autoSync(dev.id, dev.branchId ?? null).catch(() => {});
+      }
+    }
+
+    res.json({ success: true, created, skipped, results });
+  } catch (e) { console.error(e); res.status(500).json({ message: "Error", success: false }); }
+});
 
 router.get("/next-id", async (req, res) => {
   try {

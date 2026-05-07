@@ -22,23 +22,31 @@ async function getRegionalInfo(branchId: number) {
   return null;
 }
 
-async function generateNextEmployeeId(branchId: number): Promise<string> {
+async function generateEmployeeId(branchId: number, biometricId?: string): Promise<string> {
+  const [branch] = await db.select().from(branches).where(eq(branches.id, branchId));
   const regional = await getRegionalInfo(branchId);
-  if (!regional) {
-    const all = await db.select({ id: employees.id }).from(employees);
-    return `EMP${String(all.length + 1).padStart(4, "0")}`;
+
+  const prefix = regional
+    ? regional.regionalCode.toUpperCase()
+    : (branch?.code?.toUpperCase() || "EMP");
+
+  // Use biometric ID directly as suffix when available (e.g., CO2162)
+  if (biometricId) {
+    return `${prefix}${biometricId}`;
   }
-  const prefix = regional.regionalCode.toUpperCase();
+
+  // Fallback: sequential
   const allBranches = await db.select({ id: branches.id, parentId: branches.parentId }).from(branches);
-  const ids: number[] = [regional.regionalId];
-  for (const b of allBranches) { if (b.parentId === regional.regionalId) ids.push(b.id); }
+  const ids: number[] = regional ? [regional.regionalId] : [branchId];
+  for (const b of allBranches) {
+    if (regional && b.parentId === regional.regionalId) ids.push(b.id);
+  }
   const existing = await db.select({ employeeId: employees.employeeId }).from(employees)
     .where(inArray(employees.branchId, ids));
   let maxNum = 0;
   for (const e of existing) {
     const id = e.employeeId.toUpperCase();
     if (id.startsWith(prefix)) {
-      // Strip prefix and any leading dash/hyphen before parsing number
       const numStr = id.slice(prefix.length).replace(/^[-_]/, "");
       const n = parseInt(numStr, 10);
       if (!isNaN(n) && n > 0 && n > maxNum) maxNum = n;
@@ -75,7 +83,7 @@ export async function autoCreateEmployees(deviceId: number, branchId: number | n
         continue;
       }
 
-      const empId = await generateNextEmployeeId(branchId);
+      const empId = await generateEmployeeId(branchId, bioId);
 
       const [existingAfter] = await db.select().from(employees)
         .where(and(eq(employees.biometricId, bioId), eq(employees.branchId, branchId)));

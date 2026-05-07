@@ -11,7 +11,7 @@ import {
   MapPin, X, Building2, Users, Layers,
   FileText, Upload, CheckCircle2, AlertCircle, UserCircle,
   Briefcase, Phone, Hash, CreditCard, Calendar,
-  IdCard, Home, Shield, Camera, Radio
+  IdCard, Home, Shield, Camera, Radio, FileUp, Table2
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -859,6 +859,312 @@ function DesignationsTab() {
   );
 }
 
+// ── CSV Parser ────────────────────────────────────────────────────────────────
+function parseCSV(text: string): Array<{ name: string; biometricId: string }> {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const results: Array<{ name: string; biometricId: string }> = [];
+  let startIdx = 0;
+  if (lines[0]) {
+    const h = lines[0].toLowerCase();
+    if (h.includes("name") || h.includes("biometric") || h.includes("finger")) startIdx = 1;
+  }
+  for (let i = startIdx; i < lines.length; i++) {
+    const cols = lines[i].split(",").map(c => c.replace(/^"|"$/g, "").trim());
+    const name = cols[0] || "";
+    const bioId = cols[1] || "";
+    if (name || bioId) results.push({ name, biometricId: bioId });
+  }
+  return results;
+}
+
+// ── Import Modal ───────────────────────────────────────────────────────────────
+function ImportModal({ branches, onClose, onImported }: {
+  branches: any[];
+  onClose: () => void;
+  onImported: () => void;
+}) {
+  const [branchId, setBranchId] = useState<number>(0);
+  const [rows, setRows] = useState<Array<{ name: string; biometricId: string }>>([]);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<{ created: number; skipped: number; results: any[] } | null>(null);
+  const [error, setError] = useState("");
+  const [manualName, setManualName] = useState("");
+  const [manualBioId, setManualBioId] = useState("");
+  const [mode, setMode] = useState<"upload" | "manual">("upload");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const selectedBranch = branches.find(b => b.id === branchId);
+  const branchCode = selectedBranch?.code?.toUpperCase() || "";
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const text = ev.target?.result as string;
+      const parsed = parseCSV(text);
+      setRows(parsed);
+      setResult(null);
+      setError("");
+    };
+    reader.readAsText(file);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function addManualRow() {
+    if (!manualName.trim() && !manualBioId.trim()) return;
+    setRows(r => [...r, { name: manualName.trim(), biometricId: manualBioId.trim() }]);
+    setManualName("");
+    setManualBioId("");
+  }
+
+  function removeRow(i: number) {
+    setRows(r => r.filter((_, idx) => idx !== i));
+  }
+
+  function downloadTemplate() {
+    const url = `${BASE}/api/employees/import-template`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "employee-import-template.csv";
+    a.click();
+  }
+
+  async function handleImport() {
+    if (!branchId) { setError("Please select a branch first."); return; }
+    if (rows.length === 0) { setError("No employees to import."); return; }
+    setImporting(true);
+    setError("");
+    try {
+      const resp = await fetch(apiUrl("/employees/import"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branchId, employees: rows }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { setError(data.message || "Import failed"); return; }
+      setResult(data);
+      if (data.created > 0) onImported();
+    } catch (e: any) {
+      setError(e.message || "Network error");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-background rounded-2xl shadow-2xl border border-border w-full max-w-2xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-gradient-to-r from-primary/5 to-background rounded-t-2xl shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+              <FileUp className="w-4.5 h-4.5 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-bold text-sm">Import Employees</h2>
+              <p className="text-xs text-muted-foreground">Bulk import employees with biometric IDs</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-muted rounded-xl transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* Branch Selection */}
+          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
+            <div className="flex items-center gap-2 mb-1">
+              <Building2 className="w-3.5 h-3.5 text-primary" />
+              <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Branch</span>
+            </div>
+            <Select value={branchId || ""} onChange={e => setBranchId(Number(e.target.value))}>
+              <option value="">— Select Branch —</option>
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>[{b.code}] {b.name}</option>
+              ))}
+            </Select>
+            {branchCode && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                Employee IDs will be generated as <span className="font-mono font-semibold text-primary">{branchCode}{"<biometric_id>"}</span>
+                &nbsp;(e.g. <span className="font-mono text-primary">{branchCode}2162</span>)
+              </p>
+            )}
+          </div>
+
+          {/* Mode Toggle + Template */}
+          <div className="flex items-center justify-between">
+            <div className="flex border border-border rounded-lg overflow-hidden text-xs">
+              <button
+                onClick={() => setMode("upload")}
+                className={cn("px-3 py-1.5 flex items-center gap-1.5 transition-colors",
+                  mode === "upload" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"
+                )}>
+                <Upload className="w-3 h-3" /> CSV Upload
+              </button>
+              <button
+                onClick={() => setMode("manual")}
+                className={cn("px-3 py-1.5 flex items-center gap-1.5 transition-colors border-l border-border",
+                  mode === "manual" ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"
+                )}>
+                <Table2 className="w-3 h-3" /> Manual Entry
+              </button>
+            </div>
+            <button onClick={downloadTemplate}
+              className="flex items-center gap-1.5 text-xs text-primary hover:underline px-2 py-1 rounded border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors">
+              <Download className="w-3 h-3" /> Download Template
+            </button>
+          </div>
+
+          {/* Upload Mode */}
+          {mode === "upload" && (
+            <div
+              onClick={() => fileRef.current?.click()}
+              className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
+            >
+              <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFile} />
+              <Upload className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
+              <p className="text-sm font-medium">Click to upload CSV file</p>
+              <p className="text-xs text-muted-foreground mt-1">Columns: <span className="font-mono">Name, Biometric ID</span></p>
+              {rows.length > 0 && (
+                <p className="text-xs text-green-600 mt-2 font-medium"><CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />{rows.length} rows loaded</p>
+              )}
+            </div>
+          )}
+
+          {/* Manual Entry Mode */}
+          {mode === "manual" && (
+            <div className="rounded-xl border border-border bg-muted/10 p-3 space-y-2">
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <Label className="text-xs">Employee Name</Label>
+                  <Input
+                    className="h-8 text-xs mt-1"
+                    placeholder="e.g. H.U.R.PRIYANGIKA"
+                    value={manualName}
+                    onChange={e => setManualName(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && addManualRow()}
+                  />
+                </div>
+                <div className="w-32">
+                  <Label className="text-xs">Biometric ID</Label>
+                  <Input
+                    className="h-8 text-xs mt-1 font-mono"
+                    placeholder="e.g. 2162"
+                    value={manualBioId}
+                    onChange={e => setManualBioId(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && addManualRow()}
+                  />
+                </div>
+                <Button onClick={addManualRow} className="h-8 px-3 text-xs shrink-0">
+                  <Plus className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Preview Table */}
+          {rows.length > 0 && !result && (
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-b border-border">
+                <span className="text-xs font-semibold">{rows.length} employee{rows.length !== 1 ? "s" : ""} to import</span>
+                <button onClick={() => setRows([])} className="text-xs text-red-500 hover:text-red-600">Clear all</button>
+              </div>
+              <div className="overflow-y-auto max-h-52">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/30 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Name</th>
+                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Biometric ID</th>
+                      <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Employee ID</th>
+                      <th className="px-3 py-2 w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {rows.map((r, i) => (
+                      <tr key={i} className="hover:bg-muted/20">
+                        <td className="px-3 py-1.5">{r.name || <span className="text-red-400">—</span>}</td>
+                        <td className="px-3 py-1.5 font-mono">{r.biometricId || <span className="text-red-400">—</span>}</td>
+                        <td className="px-3 py-1.5 font-mono font-semibold text-primary">
+                          {branchCode && r.biometricId ? `${branchCode}${r.biometricId}` : <span className="text-muted-foreground/50">select branch</span>}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <button onClick={() => removeRow(i)} className="text-muted-foreground hover:text-red-500 transition-colors">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Import Result */}
+          {result && (
+            <div className="rounded-xl border border-green-200 bg-green-50/50 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                <span className="font-semibold text-sm text-green-800">Import Complete</span>
+              </div>
+              <div className="flex gap-4 text-sm">
+                <span className="text-green-700"><span className="font-bold">{result.created}</span> created</span>
+                {result.skipped > 0 && <span className="text-amber-600"><span className="font-bold">{result.skipped}</span> skipped</span>}
+              </div>
+              {result.results.some((r: any) => r.status === "skipped") && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
+                  <div className="px-3 py-1.5 bg-amber-100/50 border-b border-amber-200 text-xs font-semibold text-amber-700">Skipped entries</div>
+                  <div className="max-h-32 overflow-y-auto">
+                    {result.results.filter((r: any) => r.status === "skipped").map((r: any, i: number) => (
+                      <div key={i} className="px-3 py-1.5 text-xs border-b border-amber-100 last:border-0 flex items-center gap-2">
+                        <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
+                        <span className="font-medium">{r.name}</span>
+                        <span className="font-mono text-muted-foreground">{r.biometricId}</span>
+                        <span className="text-amber-600 ml-auto">{r.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-2 px-5 py-4 border-t border-border shrink-0">
+          {result ? (
+            <Button onClick={onClose} className="flex-1">Done</Button>
+          ) : (
+            <>
+              <Button
+                onClick={handleImport}
+                disabled={importing || rows.length === 0 || !branchId}
+                className="flex-1 flex items-center gap-2"
+              >
+                {importing ? (
+                  <><span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Importing...</>
+                ) : (
+                  <><FileUp className="w-3.5 h-3.5" />Import {rows.length > 0 ? `${rows.length} Employee${rows.length !== 1 ? "s" : ""}` : "Employees"}</>
+                )}
+              </Button>
+              <Button variant="outline" onClick={onClose} className="w-24">Cancel</Button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function Employees() {
   const [activeTab, setActiveTab] = useState<Tab>("Employee List");
@@ -870,6 +1176,7 @@ export default function Employees() {
   const [filterBranchId, setFilterBranchId] = useState("");
   const [drawerEmp, setDrawerEmp] = useState<any | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data: branchRes } = useListBranches();
   const branches: any[] = branchRes || [];
@@ -971,6 +1278,9 @@ export default function Employees() {
             <>
               <Button variant="outline" onClick={exportCSV} className="text-xs h-8 px-3 flex items-center gap-1.5">
                 <Download className="w-3.5 h-3.5" /> Export CSV
+              </Button>
+              <Button variant="outline" onClick={() => setImportOpen(true)} className="text-xs h-8 px-3 flex items-center gap-1.5 border-primary/30 text-primary hover:bg-primary/5">
+                <FileUp className="w-3.5 h-3.5" /> Import
               </Button>
               <Button onClick={() => { setDrawerEmp(null); setDrawerOpen(true); }} className="text-xs h-8 px-3 flex items-center gap-1.5">
                 <Plus className="w-3.5 h-3.5" /> Add Employee
@@ -1125,6 +1435,14 @@ export default function Employees() {
           branches={branches}
           onClose={() => setDrawerOpen(false)}
           onSaved={() => { setDrawerOpen(false); refetch(); }}
+        />
+      )}
+
+      {importOpen && (
+        <ImportModal
+          branches={branches}
+          onClose={() => setImportOpen(false)}
+          onImported={() => refetch()}
         />
       )}
     </div>
