@@ -177,6 +177,8 @@ function DevicesTab() {
     setTimeout(() => setSuccessMsg(null), 8000);
   }
 
+  const unassignedDevices = (devices || []).filter((d: any) => !d.branchId);
+
   return (
     <div className="space-y-4">
       {editDevice && (
@@ -188,6 +190,23 @@ function DevicesTab() {
         />
       )}
 
+      {unassignedDevices.length > 0 && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 px-4 py-3 rounded-lg text-sm text-amber-900">
+          <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">
+              {unassignedDevices.length === 1
+                ? `1 device has no branch assigned`
+                : `${unassignedDevices.length} devices have no branch assigned`}
+            </p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Attendance will <strong>not</strong> be recorded for punches from{" "}
+              {unassignedDevices.map((d: any) => <strong key={d.id}>{d.name}</strong>).reduce((acc: any, el: any, i: number) => i === 0 ? [el] : [...acc, ", ", el], [])}{" "}
+              until a branch is assigned. Click <strong>⚠ Assign Branch</strong> in the table below to fix this.
+            </p>
+          </div>
+        </div>
+      )}
 
       {successMsg && (
         <div className="flex items-start gap-2 bg-emerald-50 border border-emerald-200 px-4 py-3 rounded-lg text-sm text-emerald-800">
