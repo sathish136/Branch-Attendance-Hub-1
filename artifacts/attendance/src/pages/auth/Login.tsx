@@ -39,6 +39,7 @@ export default function Login() {
       }
       localStorage.setItem("auth_token", data.token);
       localStorage.setItem("auth_user", JSON.stringify(data.user));
+      localStorage.setItem("auth_login_time", String(Date.now()));
       setLocation("/");
     } catch {
       setError("Unable to connect to server. Please try again.");

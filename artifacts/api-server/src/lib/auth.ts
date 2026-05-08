@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
+import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { join } from "path";
 
 export function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password + "salt_po_2024").digest("hex");
@@ -9,24 +11,55 @@ export function generateToken(userId: number): string {
   return crypto.createHash("sha256").update(`${userId}-${Date.now()}-po_secret`).digest("hex");
 }
 
-const activeSessions = new Map<string, { userId: number; expiresAt: number }>();
+const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
+const WORKSPACE = process.env.REPL_HOME || "/home/runner/workspace";
+const SESSIONS_FILE = join(WORKSPACE, ".sessions.json");
+
+type SessionMap = Record<string, { userId: number; expiresAt: number }>;
+
+function loadSessions(): SessionMap {
+  try {
+    const raw = readFileSync(SESSIONS_FILE, "utf-8");
+    const parsed: SessionMap = JSON.parse(raw);
+    const now = Date.now();
+    const alive: SessionMap = {};
+    for (const [token, s] of Object.entries(parsed)) {
+      if (s.expiresAt > now) alive[token] = s;
+    }
+    return alive;
+  } catch {
+    return {};
+  }
+}
+
+function saveSessions(sessions: SessionMap) {
+  try {
+    mkdirSync(WORKSPACE, { recursive: true });
+    writeFileSync(SESSIONS_FILE, JSON.stringify(sessions), "utf-8");
+  } catch {}
+}
+
+let activeSessions: SessionMap = loadSessions();
 
 export function createSession(token: string, userId: number) {
-  activeSessions.set(token, { userId, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
+  activeSessions[token] = { userId, expiresAt: Date.now() + SESSION_TTL };
+  saveSessions(activeSessions);
 }
 
 export function getSession(token: string): { userId: number } | null {
-  const session = activeSessions.get(token);
+  const session = activeSessions[token];
   if (!session) return null;
   if (session.expiresAt < Date.now()) {
-    activeSessions.delete(token);
+    delete activeSessions[token];
+    saveSessions(activeSessions);
     return null;
   }
   return { userId: session.userId };
 }
 
 export function deleteSession(token: string) {
-  activeSessions.delete(token);
+  delete activeSessions[token];
+  saveSessions(activeSessions);
 }
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
