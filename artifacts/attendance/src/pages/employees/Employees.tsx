@@ -932,11 +932,21 @@ function ImportModal({ branches, onClose, onImported }: {
   }
 
   function downloadTemplate() {
-    const url = `${BASE}/api/employees/import-template`;
+    const csv = [
+      "Name,Biometric ID",
+      "H.U.R.PRIYANGIKA,2162",
+      "S.S.KANNANGARA,2273",
+      "R.P.PERERA,2280",
+    ].join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = "employee-import-template.csv";
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   async function handleImport() {
