@@ -2,11 +2,11 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Users, UserCheck, UserMinus, Clock, CalendarDays, Building2,
   AlertTriangle, CheckCircle2, ArrowUp, ArrowDown, Minus,
-  Coffee, Timer, RefreshCw, Wifi, WifiOff, AlertCircle, Fingerprint
+  Coffee, Timer, RefreshCw, Wifi, WifiOff, AlertCircle, Fingerprint,
+  ShieldCheck, X, History, Monitor,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authFetch } from "@/lib/authFetch";
-import { toast } from "sonner";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const api = (p: string) => `${BASE}/api${p}`;
@@ -159,6 +159,8 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, [load, loadDevices]);
 
+  const [loginPopup, setLoginPopup] = useState<{ lastLogin: string | null; ip: string | null } | null>(null);
+
   useEffect(() => {
     const shouldShow = localStorage.getItem("auth_show_login_info");
     if (!shouldShow) return;
@@ -177,13 +179,7 @@ export default function Dashboard() {
         })
       : null;
 
-    toast.info("Welcome back!", {
-      description: [
-        lastLoginStr ? `Last login: ${lastLoginStr}` : null,
-        loginIp    ? `From: ${loginIp}`             : null,
-      ].filter(Boolean).join("  ·  "),
-      duration: 8000,
-    });
+    setLoginPopup({ lastLogin: lastLoginStr, ip: loginIp });
   }, []);
 
   const s = summary;
@@ -258,6 +254,71 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+
+      {/* ── Last Login Popup ── */}
+      {loginPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="font-bold text-gray-900 text-[15px] leading-none">Login Successful</p>
+                  <p className="text-[12px] text-gray-400 mt-0.5">Previous session details</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setLoginPopup(null)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 space-y-4">
+              {loginPopup.lastLogin && (
+                <div className="flex items-start gap-3 p-3.5 rounded-xl bg-blue-50 border border-blue-100">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                    <History className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-blue-500 uppercase tracking-wide">Last Login Date & Time</p>
+                    <p className="text-[14px] font-semibold text-gray-900 mt-0.5">{loginPopup.lastLogin}</p>
+                  </div>
+                </div>
+              )}
+              {loginPopup.ip && (
+                <div className="flex items-start gap-3 p-3.5 rounded-xl bg-violet-50 border border-violet-100">
+                  <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
+                    <Monitor className="w-4 h-4 text-violet-600" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold text-violet-500 uppercase tracking-wide">Logged in from (IP)</p>
+                    <p className="text-[14px] font-semibold text-gray-900 mt-0.5 font-mono">{loginPopup.ip}</p>
+                  </div>
+                </div>
+              )}
+              <p className="text-[11px] text-gray-400 text-center">If this wasn't you, contact your administrator immediately.</p>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 pb-5">
+              <button
+                onClick={() => setLoginPopup(null)}
+                className="w-full py-2.5 rounded-xl text-[14px] font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: "linear-gradient(135deg, hsl(357 73% 48%), hsl(357 73% 38%))" }}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
