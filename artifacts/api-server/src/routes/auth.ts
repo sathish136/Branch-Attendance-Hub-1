@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { systemUsers } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { systemUsers, branches } from "@workspace/db/schema";
+import { eq, inArray } from "drizzle-orm";
 import {
   hashPassword,
   generateToken,
@@ -86,11 +86,18 @@ router.post("/login", async (req, res) => {
     await logActivity({ userId: user.id, username: user.username, fullName: user.fullName, action: "login", module: "Auth", description: "User logged in successfully", sessionId: token.slice(0, 16), status: "success", req });
 
     const branchIds: number[] = JSON.parse(user.branchIds || "[]");
+    let branchNames: string[] = [];
+    if (branchIds.length > 0) {
+      try {
+        const branchRows = await db.select().from(branches).where(inArray(branches.id, branchIds));
+        branchNames = branchIds.map(id => branchRows.find(b => b.id === id)?.name || "").filter(Boolean);
+      } catch {}
+    }
     res.cookie("auth_token", token, { httpOnly: true, maxAge: 8 * 60 * 60 * 1000, sameSite: "lax" });
     res.json({
       success: true, token,
       mustChangePassword: user.mustChangePassword ?? false,
-      user: { id: user.id, username: user.username, fullName: user.fullName, email: user.email, role: user.role, branchIds, branchNames: [], isActive: user.isActive },
+      user: { id: user.id, username: user.username, fullName: user.fullName, email: user.email, role: user.role, branchIds, branchNames, isActive: user.isActive },
     });
   } catch (e) {
     console.error(e);

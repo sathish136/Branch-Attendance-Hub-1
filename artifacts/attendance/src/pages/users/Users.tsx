@@ -86,7 +86,7 @@ export default function Users() {
   const branchMap = new Map(branchList.map(b => [b.id, b.name]));
 
   const visibleUsers = (users || []).filter((u: any) =>
-    u.id !== currentUser?.id && !HIDDEN_USERS.includes(u.username)
+    !HIDDEN_USERS.includes(u.username)
   );
 
   return (

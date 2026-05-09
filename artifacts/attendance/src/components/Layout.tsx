@@ -545,7 +545,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Branch</span>
             <span className="text-border text-xs">:</span>
             <span className="font-semibold text-[13px] text-foreground truncate">
-              {storedUser.branchName || "Head Office"}
+              {storedUser.role === "super_admin"
+                ? "Head Office"
+                : (storedUser.branchNames?.[0] || storedUser.branchName || "Head Office")}
             </span>
             <span className="mx-1 text-border">|</span>
             <span className="text-[12px] text-muted-foreground hidden sm:block">
