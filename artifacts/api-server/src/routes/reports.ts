@@ -192,10 +192,18 @@ router.get("/summary", async (req, res) => {
     }
     const empIds = filteredEmp.map(r => r.emp.id);
 
-    const allBranches = await db.select().from(branches).where(eq(branches.isActive, true));
+    let allBranches = await db.select().from(branches).where(eq(branches.isActive, true));
+    if (reqUser && !reqUser.isSuper && reqUser.branchIds.length > 0) {
+      const allowed = new Set(reqUser.branchIds);
+      allBranches = allBranches.filter(b => allowed.has(b.id));
+    }
 
     const todayRecs = await db.select().from(attendanceRecords).where(eq(attendanceRecords.date, todayStr));
-    const filteredToday = branchId ? todayRecs.filter(r => r.branchId === Number(branchId)) : todayRecs;
+    let filteredToday = branchId ? todayRecs.filter(r => r.branchId === Number(branchId)) : todayRecs;
+    if (reqUser && !reqUser.isSuper && reqUser.branchIds.length > 0) {
+      const allowed = new Set(reqUser.branchIds);
+      filteredToday = filteredToday.filter(r => r.branchId != null && allowed.has(r.branchId));
+    }
     const present = filteredToday.filter(r => r.status === "present" || r.status === "late").length;
     const absent = filteredToday.filter(r => r.status === "absent").length;
     const late = filteredToday.filter(r => r.status === "late").length;
@@ -205,7 +213,11 @@ router.get("/summary", async (req, res) => {
 
     const monthRecs = await db.select().from(attendanceRecords)
       .where(and(gte(attendanceRecords.date, monthStart), lte(attendanceRecords.date, monthEnd)));
-    const filteredMonth = branchId ? monthRecs.filter(r => r.branchId === Number(branchId)) : monthRecs;
+    let filteredMonth = branchId ? monthRecs.filter(r => r.branchId === Number(branchId)) : monthRecs;
+    if (reqUser && !reqUser.isSuper && reqUser.branchIds.length > 0) {
+      const allowed = new Set(reqUser.branchIds);
+      filteredMonth = filteredMonth.filter(r => r.branchId != null && allowed.has(r.branchId));
+    }
     const monthPresent = filteredMonth.filter(r => r.status === "present" || r.status === "late").length;
     const monthTotal = filteredEmp.length * daysInMonth;
     const monthPct = monthTotal > 0 ? Math.round((monthPresent / monthTotal) * 100) : 0;
@@ -217,7 +229,7 @@ router.get("/summary", async (req, res) => {
       return { branchId: b.id, branchName: b.name, present: presentInBranch, absent: empInBranch - presentInBranch, total: empInBranch };
     });
 
-    const recentRecs = await db.select({
+    let recentRecs = await db.select({
       rec: attendanceRecords,
       empName: employees.fullName,
       empCode: employees.employeeId,
@@ -225,6 +237,10 @@ router.get("/summary", async (req, res) => {
     }).from(attendanceRecords)
       .leftJoin(employees, eq(attendanceRecords.employeeId, employees.id))
       .leftJoin(branches, eq(attendanceRecords.branchId, branches.id));
+    if (reqUser && !reqUser.isSuper && reqUser.branchIds.length > 0) {
+      const allowed = new Set(reqUser.branchIds);
+      recentRecs = recentRecs.filter(r => r.rec.branchId != null && allowed.has(r.rec.branchId));
+    }
     const recent = recentRecs.slice(-10).reverse().map(r => ({
       ...r.rec,
       employeeName: r.empName || "",
