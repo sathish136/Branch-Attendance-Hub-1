@@ -253,6 +253,7 @@ export default function Users() {
                   const canEdit = isSuper
                     ? !isSelf
                     : (u.role !== "super_admin" && u.role !== "regional_admin");
+                  const canDelete = canEdit && u.role !== "super_admin";
                   return (
                     <tr key={u.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-2.5">
@@ -303,20 +304,22 @@ export default function Users() {
                               <button onClick={() => openEdit(u)} className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Edit user">
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
-                              <button
-                                onClick={async () => {
-                                  if (await doConfirm(`Delete user "${u.username}"?`, { title: "Delete User" })) {
-                                    remove.mutate({ id: u.id }, {
-                                      onSuccess: () => { refetch(); toast.success(`User "${u.username}" deleted.`); },
-                                      onError: () => toast.error("Failed to delete user."),
-                                    });
-                                  }
-                                }}
-                                className="p-1.5 hover:bg-red-100 text-red-500 rounded"
-                                title="Delete user"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {canDelete && (
+                                <button
+                                  onClick={async () => {
+                                    if (await doConfirm(`Delete user "${u.username}"?`, { title: "Delete User" })) {
+                                      remove.mutate({ id: u.id }, {
+                                        onSuccess: () => { refetch(); toast.success(`User "${u.username}" deleted.`); },
+                                        onError: () => toast.error("Failed to delete user."),
+                                      });
+                                    }
+                                  }}
+                                  className="p-1.5 hover:bg-red-100 text-red-500 rounded"
+                                  title="Delete user"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </>
                           ) : (
                             <span className="text-xs text-muted-foreground px-1.5 py-1">
