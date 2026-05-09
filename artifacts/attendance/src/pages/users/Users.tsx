@@ -251,9 +251,9 @@ export default function Users() {
                   const roleInfo = ROLE_LABELS[u.role] || ROLE_LABELS.viewer;
                   const isSelf = u.id === currentUser?.id;
                   const canEdit = isSuper
-                    ? !isSelf
+                    ? true
                     : (u.role !== "super_admin" && u.role !== "regional_admin");
-                  const canDelete = canEdit && u.role !== "super_admin";
+                  const canDelete = canEdit && !isSelf && u.role !== "super_admin";
                   return (
                     <tr key={u.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-2.5">
