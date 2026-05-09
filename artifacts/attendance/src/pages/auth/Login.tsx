@@ -43,8 +43,18 @@ export default function Login() {
       localStorage.setItem("auth_login_time", String(Date.now()));
       if (data.lastLogin) localStorage.setItem("auth_last_login", data.lastLogin);
       else localStorage.removeItem("auth_last_login");
-      if (data.loginIp) localStorage.setItem("auth_login_ip", data.loginIp);
-      else localStorage.removeItem("auth_login_ip");
+
+      // Capture real public IP and timezone from the browser
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Unknown";
+      localStorage.setItem("auth_login_timezone", timezone);
+      try {
+        const ipRes = await fetch("https://api.ipify.org?format=json");
+        const ipData = await ipRes.json();
+        localStorage.setItem("auth_login_ip", ipData.ip || "Unknown");
+      } catch {
+        localStorage.setItem("auth_login_ip", "Unknown");
+      }
+
       localStorage.setItem("auth_show_login_info", "1");
       if (data.mustChangePassword) {
         localStorage.setItem("must_change_password", "true");

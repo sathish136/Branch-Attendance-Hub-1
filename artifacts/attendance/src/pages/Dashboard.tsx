@@ -159,7 +159,7 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, [load, loadDevices]);
 
-  const [loginPopup, setLoginPopup] = useState<{ lastLogin: string | null; currentLogin: string; ip: string | null } | null>(null);
+  const [loginPopup, setLoginPopup] = useState<{ lastLogin: string | null; currentLogin: string; ip: string; timezone: string } | null>(null);
 
   useEffect(() => {
     const shouldShow = localStorage.getItem("auth_show_login_info");
@@ -167,7 +167,8 @@ export default function Dashboard() {
     localStorage.removeItem("auth_show_login_info");
 
     const lastLoginRaw = localStorage.getItem("auth_last_login");
-    const loginIp = localStorage.getItem("auth_login_ip");
+    const loginIp = localStorage.getItem("auth_login_ip") || "Unknown";
+    const loginTimezone = localStorage.getItem("auth_login_timezone") || "";
     const loginTimeRaw = localStorage.getItem("auth_login_time");
 
     const lastLoginDate = lastLoginRaw ? new Date(lastLoginRaw) : null;
@@ -184,7 +185,7 @@ export default function Dashboard() {
       hour: "2-digit", minute: "2-digit", hour12: true,
     });
 
-    setLoginPopup({ lastLogin: lastLoginStr, currentLogin: currentLoginStr, ip: loginIp });
+    setLoginPopup({ lastLogin: lastLoginStr, currentLogin: currentLoginStr, ip: loginIp, timezone: loginTimezone });
   }, []);
 
   const s = summary;
@@ -305,17 +306,18 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
-              {loginPopup.ip && (
-                <div className="flex items-start gap-3 p-3.5 rounded-xl bg-violet-50 border border-violet-100">
-                  <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
-                    <Monitor className="w-4 h-4 text-violet-600" />
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold text-violet-500 uppercase tracking-wide">Logged in from (IP)</p>
-                    <p className="text-[14px] font-semibold text-gray-900 mt-0.5 font-mono">{loginPopup.ip}</p>
-                  </div>
+              <div className="flex items-start gap-3 p-3.5 rounded-xl bg-violet-50 border border-violet-100">
+                <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
+                  <Monitor className="w-4 h-4 text-violet-600" />
                 </div>
-              )}
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold text-violet-500 uppercase tracking-wide">Logged in from</p>
+                  <p className="text-[14px] font-semibold text-gray-900 mt-0.5 font-mono">{loginPopup.ip}</p>
+                  {loginPopup.timezone && (
+                    <p className="text-[11px] text-gray-500 mt-0.5">📍 {loginPopup.timezone}</p>
+                  )}
+                </div>
+              </div>
               <p className="text-[11px] text-gray-400 text-center pt-1">If this wasn't you, contact your administrator immediately.</p>
             </div>
 
