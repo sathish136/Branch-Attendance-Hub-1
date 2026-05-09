@@ -6,6 +6,10 @@ import { Plus, Edit2, Trash2, X, Network, MapPin, User, Building2, Search } from
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function apiUrl(path: string) { return `${BASE}/api${path}`; }
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = localStorage.getItem("auth_token");
+  return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
+}
 
 const TYPE_STYLE: Record<string, string> = {
   head_office: "bg-blue-100 text-blue-700 border border-blue-200",
@@ -26,24 +30,24 @@ export default function Branches() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["branches"],
-    queryFn: () => fetch(apiUrl("/branches")).then(r => r.json()),
+    queryFn: () => fetch(apiUrl("/branches"), { headers: authHeaders() }).then(r => r.json()),
   });
   const branches = Array.isArray(data) ? data : [];
 
   const createB = useMutation({
     mutationFn: (body: any) => fetch(apiUrl("/branches"), {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      method: "POST", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body),
     }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["branches"] }),
   });
   const updateB = useMutation({
     mutationFn: ({ id, data }: any) => fetch(apiUrl(`/branches/${id}`), {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+      method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(data),
     }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["branches"] }),
   });
   const deleteB = useMutation({
-    mutationFn: (id: number) => fetch(apiUrl(`/branches/${id}`), { method: "DELETE" }).then(r => r.json()),
+    mutationFn: (id: number) => fetch(apiUrl(`/branches/${id}`), { method: "DELETE", headers: authHeaders() }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["branches"] }),
   });
 

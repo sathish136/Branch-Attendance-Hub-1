@@ -3,6 +3,7 @@ import { useGetAttendanceReport, useGetMonthlyReport, useGetOvertimeReport, useL
 import { PageHeader, Card, Input, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Users, Clock, Calendar, AlignLeft, FileText, Sheet } from "lucide-react";
+import { authFetch } from "@/lib/authFetch";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function apiUrl(path: string) { return `${BASE}/api${path}`; }
@@ -595,7 +596,7 @@ function useSplitReport(startDate: string, endDate: string) {
         let page = 1;
         while (true) {
           const params = new URLSearchParams({ startDate, endDate, page: String(page) });
-          const res = await fetch(apiUrl(`/biometric/logs?${params}`));
+          const res = await authFetch(apiUrl(`/biometric/logs?${params}`));
           if (!res.ok) break;
           const json = await res.json();
           const batch: PunchLog[] = json.logs || [];

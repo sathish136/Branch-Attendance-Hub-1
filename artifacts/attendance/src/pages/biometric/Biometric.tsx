@@ -3,6 +3,7 @@ import { useListBiometricDevices, useUpdateBiometricDevice, useDeleteBiometricDe
 import { PageHeader, Card, Button, Select, Label, useConfirm } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy, Radio, XCircle } from "lucide-react";
+import { authFetch } from "@/lib/authFetch";
 
 const DEVICE_STATUS: Record<string, { cls: string; icon: React.ElementType }> = {
   online: { cls: "bg-green-100 text-green-700", icon: Wifi },
@@ -301,7 +302,7 @@ function LogsTab() {
     if (!confirm("Clear all push logs? This cannot be undone.")) return;
     setClearing(true);
     try {
-      await fetch(apiUrl("/biometric/logs"), { method: "DELETE" });
+      await authFetch(apiUrl("/biometric/logs"), { method: "DELETE" });
       refetch();
     } finally {
       setClearing(false);
@@ -311,7 +312,7 @@ function LogsTab() {
   async function handleReprocess() {
     setReprocessing(true);
     try {
-      await fetch(apiUrl("/biometric/reprocess"), { method: "POST" });
+      await authFetch(apiUrl("/biometric/reprocess"), { method: "POST" });
       refetch();
     } finally {
       setReprocessing(false);

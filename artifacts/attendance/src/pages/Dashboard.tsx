@@ -5,6 +5,7 @@ import {
   Coffee, Timer, RefreshCw, Wifi, WifiOff, AlertCircle, Fingerprint
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { authFetch } from "@/lib/authFetch";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const api = (p: string) => `${BASE}/api${p}`;
@@ -126,7 +127,7 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(api("/reports/summary"));
+      const r = await authFetch(api("/reports/summary"));
       const d = await r.json();
       setSummary(d);
       setLastUpdated(new Date());
@@ -140,7 +141,7 @@ export default function Dashboard() {
   const loadDevices = useCallback(async () => {
     setDevLoading(true);
     try {
-      const r = await fetch(api("/biometric/devices"));
+      const r = await authFetch(api("/biometric/devices"));
       const d = await r.json();
       setDevices(Array.isArray(d) ? d : []);
     } catch {

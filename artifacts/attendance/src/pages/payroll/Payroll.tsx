@@ -6,6 +6,7 @@ import {
   Users, TrendingUp, Minus, Eye, X, Printer,
   ChevronDown, ChevronUp, AlertCircle
 } from "lucide-react";
+import { authFetch } from "@/lib/authFetch";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function apiUrl(path: string) { return `${BASE}/api${path}`; }
@@ -219,8 +220,8 @@ export default function Payroll() {
     setLoading(true); setMsg(null);
     try {
       const [pr, sr] = await Promise.all([
-        fetch(apiUrl(`/payroll?month=${month}&year=${year}`)).then(r => r.json()),
-        fetch(apiUrl(`/payroll/summary?month=${month}&year=${year}`)).then(r => r.json()),
+        authFetch(apiUrl(`/payroll?month=${month}&year=${year}`)).then(r => r.json()),
+        authFetch(apiUrl(`/payroll/summary?month=${month}&year=${year}`)).then(r => r.json()),
       ]);
       setPayroll(Array.isArray(pr) ? pr : []);
       setSummary(sr.totalEmployees !== undefined ? sr : null);
@@ -237,7 +238,7 @@ export default function Payroll() {
     if (!confirm(`Generate payroll for ${MONTHS[month - 1]} ${year}? This will overwrite existing draft records.`)) return;
     setGenerating(true); setMsg(null);
     try {
-      const r = await fetch(apiUrl("/payroll/generate"), {
+      const r = await authFetch(apiUrl("/payroll/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ month, year }),
@@ -257,7 +258,7 @@ export default function Payroll() {
   };
 
   const updateStatus = async (id: number, status: PayStatus) => {
-    await fetch(apiUrl(`/payroll/${id}/status`), {
+    await authFetch(apiUrl(`/payroll/${id}/status`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
@@ -274,7 +275,7 @@ export default function Payroll() {
   const bulkUpdateStatus = async (status: PayStatus) => {
     const ids = Array.from(selected);
     if (!ids.length) return;
-    await fetch(apiUrl("/payroll/bulk-status"), {
+    await authFetch(apiUrl("/payroll/bulk-status"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids, status }),

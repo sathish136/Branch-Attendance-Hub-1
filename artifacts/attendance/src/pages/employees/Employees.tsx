@@ -35,6 +35,10 @@ const DEPT_LIST = ["Operations","Finance & Accounts","Human Resources","Informat
 const DESIGNATION_LIST = ["Postmaster","Assistant Postmaster","Supervisor","Postal Officer","Counter Clerk","Sorting Officer","Delivery Agent","Data Entry Operator","Accounts Officer","HR Officer","IT Officer","Driver","Security Officer","Clerical Assistant"];
 
 function apiUrl(path: string) { return `${BASE}/api${path}`; }
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = localStorage.getItem("auth_token");
+  return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
+}
 
 function empDisplayName(emp: any) {
   if (emp.firstName && emp.lastName) return `${emp.firstName} ${emp.lastName}`;
@@ -42,13 +46,13 @@ function empDisplayName(emp: any) {
 }
 
 function useGet(key: string[], path: string) {
-  return useQuery({ queryKey: key, queryFn: () => fetch(apiUrl(path)).then(r => r.json()) });
+  return useQuery({ queryKey: key, queryFn: () => fetch(apiUrl(path), { headers: authHeaders() }).then(r => r.json()) });
 }
 function useMut(method: string, path: string, qk: string[]) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: any) => fetch(apiUrl(typeof path === "function" ? (path as any)(body) : path), {
-      method, headers: { "Content-Type": "application/json" },
+      method, headers: authHeaders({ "Content-Type": "application/json" }),
       body: body ? JSON.stringify(body) : undefined,
     }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk }),
@@ -116,7 +120,8 @@ function DocUploadRow({
     try {
       const fd = new FormData();
       fd.append(fieldName, file);
-      const resp = await fetch(apiUrl(`/employees/${empId}/documents`), { method: "POST", body: fd });
+      const token = localStorage.getItem("auth_token");
+      const resp = await fetch(apiUrl(`/employees/${empId}/documents`), { method: "POST", body: fd, headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!resp.ok) throw new Error("Upload failed");
       onUploaded();
     } catch (err: any) {
@@ -200,7 +205,8 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
     if (emp) return;
     const branchId = Number(form.branchId);
     if (!branchId) return;
-    fetch(apiUrl(`/employees/next-id?branchId=${branchId}`))
+    const nextIdToken = localStorage.getItem("auth_token");
+    fetch(apiUrl(`/employees/next-id?branchId=${branchId}`), { headers: nextIdToken ? { Authorization: `Bearer ${nextIdToken}` } : {} })
       .then(r => r.json())
       .then(data => {
         if (!data.noRegional) {
@@ -224,7 +230,8 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
       reader.readAsDataURL(file);
       const fd = new FormData();
       fd.append("photo", file);
-      const resp = await fetch(apiUrl(`/employees/${emp.id}/documents`), { method: "POST", body: fd });
+      const photoToken = localStorage.getItem("auth_token");
+      const resp = await fetch(apiUrl(`/employees/${emp.id}/documents`), { method: "POST", body: fd, headers: photoToken ? { Authorization: `Bearer ${photoToken}` } : {} });
       if (resp.ok) { const d = await resp.json(); setPhotoPreview(d.employee?.photoUrl || photoPreview); onSaved(); }
     } finally {
       setPhotoUploading(false);
@@ -276,7 +283,8 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
       }
     };
     function triggerBioSync() {
-      fetch(apiUrl("/biometric/reprocess"), { method: "POST" }).catch(() => {});
+      const bioToken = localStorage.getItem("auth_token");
+      fetch(apiUrl("/biometric/reprocess"), { method: "POST", headers: bioToken ? { Authorization: `Bearer ${bioToken}` } : {} }).catch(() => {});
     }
     if (emp?.id) {
       updateEmp.mutate({ id: emp.id, data: payload }, {
@@ -713,12 +721,12 @@ function DepartmentsTab() {
   const createD = useMut("POST", "/departments", ["departments"]);
   const updateD = useMutation({
     mutationFn: ({ id, data }: any) => fetch(apiUrl(`/departments/${id}`), {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
+      method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(data)
     }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["departments"] }),
   });
   const deleteD = useMutation({
-    mutationFn: (id: number) => fetch(apiUrl(`/departments/${id}`), { method: "DELETE" }).then(r => r.json()),
+    mutationFn: (id: number) => fetch(apiUrl(`/departments/${id}`), { method: "DELETE", headers: authHeaders() }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["departments"] }),
   });
   const [form, setForm] = useState({ name:"", code:"", description:"" });
@@ -793,12 +801,12 @@ function DesignationsTab() {
   const createDes = useMut("POST", "/designations", ["designations"]);
   const updateDes = useMutation({
     mutationFn: ({ id, data }: any) => fetch(apiUrl(`/designations/${id}`), {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
+      method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(data)
     }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["designations"] }),
   });
   const deleteDes = useMutation({
-    mutationFn: (id: number) => fetch(apiUrl(`/designations/${id}`), { method: "DELETE" }).then(r => r.json()),
+    mutationFn: (id: number) => fetch(apiUrl(`/designations/${id}`), { method: "DELETE", headers: authHeaders() }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["designations"] }),
   });
   const [form, setForm] = useState({ name:"", code:"", departmentId:"", level:1, description:"" });
@@ -971,7 +979,7 @@ function ImportModal({ branches, onClose, onImported }: {
     try {
       const resp = await fetch(apiUrl("/employees/import"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ branchId, employees: rows }),
       });
       const data = await resp.json();
