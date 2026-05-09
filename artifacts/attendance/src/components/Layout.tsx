@@ -29,6 +29,7 @@ import {
   User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { authFetch } from "@/lib/authFetch";
 
 const BASE_URL_PREFIX = import.meta.env.BASE_URL.replace(/\/$/, "");
 function _apiUrl(path: string) { return `${BASE_URL_PREFIX}/api${path}`; }
@@ -54,8 +55,8 @@ function useNotifications() {
       const notifs: NotifItem[] = [];
       try {
         const [devRes, todayRes] = await Promise.allSettled([
-          fetch(_apiUrl("/biometric/devices")).then(r => r.json()),
-          fetch(_apiUrl("/attendance/today")).then(r => r.json()),
+          authFetch(_apiUrl("/biometric/devices")).then(r => r.json()),
+          authFetch(_apiUrl("/attendance/today")).then(r => r.json()),
         ]);
 
         if (devRes.status === "fulfilled") {
@@ -254,8 +255,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     if (!searchOpen || searchData) return;
     setSearchFetching(true);
     Promise.allSettled([
-      fetch(_apiUrl("/employees")).then(r => r.json()),
-      fetch(_apiUrl("/branches")).then(r => r.json()),
+      authFetch(_apiUrl("/employees")).then(r => r.json()),
+      authFetch(_apiUrl("/branches")).then(r => r.json()),
     ]).then(([empRes, brRes]) => {
       setSearchData({
         employees: empRes.status === "fulfilled" && Array.isArray(empRes.value) ? empRes.value : [],
