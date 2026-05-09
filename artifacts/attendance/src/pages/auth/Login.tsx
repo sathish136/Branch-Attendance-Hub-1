@@ -41,6 +41,10 @@ export default function Login() {
       localStorage.setItem("auth_token", data.token);
       localStorage.setItem("auth_user", JSON.stringify(data.user));
       localStorage.setItem("auth_login_time", String(Date.now()));
+      if (data.lastLogin) localStorage.setItem("auth_last_login", data.lastLogin);
+      else localStorage.removeItem("auth_last_login");
+      if (data.loginIp) localStorage.setItem("auth_login_ip", data.loginIp);
+      else localStorage.removeItem("auth_login_ip");
       if (data.mustChangePassword) {
         localStorage.setItem("must_change_password", "true");
         setLocation("/change-password");

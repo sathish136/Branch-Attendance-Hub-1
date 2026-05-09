@@ -80,6 +80,13 @@ router.post("/login", async (req, res) => {
       return;
     }
 
+    const previousLastLogin = user.lastLogin ?? null;
+    const clientIp =
+      (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() ||
+      req.socket?.remoteAddress ||
+      req.ip ||
+      "Unknown";
+
     const token = generateToken(user.id);
     createSession(token, user.id);
     await db.update(systemUsers).set({ lastLogin: new Date() }).where(eq(systemUsers.id, user.id));
@@ -97,6 +104,8 @@ router.post("/login", async (req, res) => {
     res.json({
       success: true, token,
       mustChangePassword: user.mustChangePassword ?? false,
+      lastLogin: previousLastLogin,
+      loginIp: clientIp,
       user: { id: user.id, username: user.username, fullName: user.fullName, email: user.email, role: user.role, branchIds, branchNames, isActive: user.isActive },
     });
   } catch (e) {

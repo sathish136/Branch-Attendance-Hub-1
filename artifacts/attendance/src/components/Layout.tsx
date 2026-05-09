@@ -27,6 +27,8 @@ import {
   ChevronRight,
   Loader2,
   User,
+  History,
+  Monitor,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authFetch } from "@/lib/authFetch";
@@ -770,35 +772,66 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </button>
 
               {/* User dropdown */}
-              {userMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-52 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
-                  {/* User info header */}
-                  <div className="px-4 py-3 border-b border-border bg-muted/40">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold border border-primary/30 shrink-0">
-                        {getInitials(userName)}
+              {userMenuOpen && (() => {
+                const lastLoginRaw = localStorage.getItem("auth_last_login");
+                const loginIp = localStorage.getItem("auth_login_ip");
+                const lastLoginDate = lastLoginRaw ? new Date(lastLoginRaw) : null;
+                const lastLoginStr = lastLoginDate
+                  ? lastLoginDate.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true })
+                  : null;
+                return (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
+                    {/* User info header */}
+                    <div className="px-4 py-3 border-b border-border bg-muted/40">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold border border-primary/30 shrink-0">
+                          {getInitials(userName)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-semibold text-foreground truncate">{userName}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">{userEmail}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-semibold text-foreground truncate">{userName}</p>
-                        <p className="text-[11px] text-muted-foreground truncate">{userEmail}</p>
-                      </div>
+                      <span className="mt-2 inline-block text-[10px] bg-primary/10 text-primary border border-primary/20 rounded-full px-2 py-0.5 font-medium capitalize">
+                        {userRole}
+                      </span>
                     </div>
-                    <span className="mt-2 inline-block text-[10px] bg-primary/10 text-primary border border-primary/20 rounded-full px-2 py-0.5 font-medium capitalize">
-                      {userRole}
-                    </span>
+                    {/* Last login info */}
+                    {(lastLoginStr || loginIp) && (
+                      <div className="px-4 py-2.5 border-b border-border bg-muted/20 space-y-1.5">
+                        {lastLoginStr && (
+                          <div className="flex items-start gap-2">
+                            <History className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide leading-none mb-0.5">Last Login</p>
+                              <p className="text-[12px] text-foreground font-medium">{lastLoginStr}</p>
+                            </div>
+                          </div>
+                        )}
+                        {loginIp && (
+                          <div className="flex items-start gap-2">
+                            <Monitor className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide leading-none mb-0.5">IP Address</p>
+                              <p className="text-[12px] text-foreground font-medium font-mono">{loginIp}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Logout */}
+                    <div className="p-1.5">
+                      <button
+                        onClick={() => { setUserMenuOpen(false); handleLogout(); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                      >
+                        <LogOut className="w-3.5 h-3.5 shrink-0" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
                   </div>
-                  {/* Logout */}
-                  <div className="p-1.5">
-                    <button
-                      onClick={() => { setUserMenuOpen(false); handleLogout(); }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
-                    >
-                      <LogOut className="w-3.5 h-3.5 shrink-0" />
-                      <span>Sign Out</span>
-                    </button>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         </header>
