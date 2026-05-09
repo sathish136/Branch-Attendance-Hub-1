@@ -54,6 +54,12 @@ async function ensureTables() {
       ON attendance_records (employee_id, date);
     `);
 
+    // Add must_change_password column if it doesn't exist (migration)
+    await client.query(`
+      ALTER TABLE system_users
+        ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+
     console.log("[DB] Biometric tables ensured.");
   } catch (err) {
     console.error("[DB] Could not ensure biometric tables:", err);

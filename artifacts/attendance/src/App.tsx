@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 
 import { AppLayout } from "@/components/Layout";
 import Login from "@/pages/auth/Login";
+import ForcePasswordChange from "@/pages/auth/ForcePasswordChange";
 import Dashboard from "@/pages/Dashboard";
 import TodayAttendance from "@/pages/attendance/Today";
 import MonthlySheet from "@/pages/attendance/Monthly";
@@ -19,15 +20,16 @@ import Payroll from "@/pages/payroll/Payroll";
 import ActivityLogs from "@/pages/activity-logs/ActivityLogs";
 import NotFound from "@/pages/not-found";
 
-const SESSION_DURATION = 8 * 60 * 60 * 1000; // 8 hours in ms
+const SESSION_DURATION = 8 * 60 * 60 * 1000;
 
 function clearAuth() {
   localStorage.removeItem("auth_token");
   localStorage.removeItem("auth_user");
   localStorage.removeItem("auth_login_time");
+  localStorage.removeItem("must_change_password");
 }
 
-export function isAuthValid(): boolean {
+function isAuthValid(): boolean {
   const token = localStorage.getItem("auth_token");
   const loginTime = localStorage.getItem("auth_login_time");
   if (!token) return false;
@@ -46,13 +48,12 @@ const queryClient = new QueryClient({
   },
 });
 
-// Intercept 401 responses globally and auto-logout
 const originalFetch = window.fetch;
 window.fetch = async function (...args) {
   const response = await originalFetch(...args);
   if (response.status === 401) {
     const url = typeof args[0] === "string" ? args[0] : (args[0] as Request).url;
-    if (url.includes("/api/") && !url.includes("/api/auth/login")) {
+    if (url.includes("/api/") && !url.includes("/api/auth/")) {
       clearAuth();
       queryClient.clear();
       window.location.href = `${BASE}/login`;
@@ -83,7 +84,6 @@ function AutoLogoutTimer() {
         setLocation("/login");
       }, remaining);
     }
-
     scheduleLogout();
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [setLocation]);
@@ -93,6 +93,8 @@ function AutoLogoutTimer() {
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   if (!isAuthValid()) return <Redirect to="/login" />;
+  const mustChange = localStorage.getItem("must_change_password") === "true";
+  if (mustChange) return <Redirect to="/change-password" />;
   return (
     <AppLayout>
       <AutoLogoutTimer />
@@ -105,6 +107,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+      <Route path="/change-password" component={ForcePasswordChange} />
       <Route path="/"><ProtectedRoute component={Dashboard} /></Route>
       <Route path="/attendance/today"><ProtectedRoute component={TodayAttendance} /></Route>
       <Route path="/attendance/monthly"><ProtectedRoute component={MonthlySheet} /></Route>

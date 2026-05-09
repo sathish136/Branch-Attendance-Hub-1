@@ -11,6 +11,7 @@ export const systemUsers = pgTable("system_users", {
   role: text("role").notNull().$type<"super_admin" | "regional_admin" | "branch_admin" | "viewer">().default("viewer"),
   branchIds: text("branch_ids").notNull().default("[]"),
   isActive: boolean("is_active").notNull().default(true),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
   lastLogin: timestamp("last_login"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

