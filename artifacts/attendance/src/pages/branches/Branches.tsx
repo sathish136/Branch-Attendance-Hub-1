@@ -28,6 +28,8 @@ const EMPTY_BRANCH = {
 
 export default function Branches() {
   const qc = useQueryClient();
+  const currentUser = (() => { try { return JSON.parse(localStorage.getItem("auth_user") || "{}"); } catch { return {}; } })();
+  const isAdmin = currentUser.role === "super_admin";
   const { data, isLoading } = useQuery({
     queryKey: ["branches"],
     queryFn: () => fetch(apiUrl("/branches"), { headers: authHeaders() }).then(r => r.json()),
@@ -109,11 +111,11 @@ export default function Branches() {
       <PageHeader
         title="Branch Management"
         description="Manage head offices, regional offices, and sub-branches."
-        action={
+        action={isAdmin ? (
           <Button onClick={openAdd} className="gap-2 text-xs h-9">
             <Plus className="w-4 h-4" /> Add Branch
           </Button>
-        }
+        ) : undefined}
       />
 
       {/* Summary */}
@@ -177,7 +179,7 @@ export default function Branches() {
             <table className="w-full text-xs">
               <thead className="bg-muted/50">
                 <tr>
-                  {["Code","Branch Name","Type","Parent","Manager","Phone","Staff","Status","Actions"].map(h => (
+                  {["Code","Branch Name","Type","Parent","Manager","Phone","Staff","Status",...(isAdmin ? ["Actions"] : [])].map(h => (
                     <th key={h} className="px-3 py-2.5 text-left font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -208,17 +210,19 @@ export default function Branches() {
                         {b.isActive ? "Active" : "Closed"}
                       </span>
                     </td>
+                    {isAdmin && (
                     <td className="px-3 py-2.5">
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => openEdit(b)} className="p-1.5 hover:bg-muted rounded text-muted-foreground"><Edit2 className="w-3.5 h-3.5" /></button>
                         <button onClick={() => { if(confirm(`Delete "${b.name}"?`)) deleteB.mutate(b.id); }} className="p-1.5 hover:bg-red-100 text-red-500 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </td>
+                    )}
                   </tr>
                 ))}
                 {!filteredBranches.length && (
-                  <tr><td colSpan={9} className="text-center py-12 text-muted-foreground">
-                    {hasFilter ? "No branches match the current filters." : "No branches yet. Click \"Add Branch\" to get started."}
+                  <tr><td colSpan={isAdmin ? 9 : 8} className="text-center py-12 text-muted-foreground">
+                    {hasFilter ? "No branches match the current filters." : "No branches found."}
                   </td></tr>
                 )}
               </tbody>
