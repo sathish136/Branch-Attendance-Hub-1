@@ -150,9 +150,9 @@ const ALL_NAV_GROUPS: (NavGroup & { roles?: string[] })[] = [
   },
   {
     label: "System",
-    roles: ["super_admin", "regional_admin"],
+    roles: ["super_admin"],
     items: [
-      { href: "/users",         label: "User Management", icon: UserCog,  roles: ["super_admin", "regional_admin"] } as any,
+      { href: "/users",         label: "User Management", icon: UserCog,  roles: ["super_admin"] } as any,
       { href: "/activity-logs", label: "Activity Logs",   icon: Activity, roles: ["super_admin"] } as any,
       { href: "/settings",      label: "Settings",        icon: Settings, roles: ["super_admin"] } as any,
     ],

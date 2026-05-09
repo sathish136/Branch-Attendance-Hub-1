@@ -134,7 +134,7 @@ function Router() {
       <Route path="/payroll"><ProtectedRoute component={Payroll} /></Route>
       <Route path="/biometric"><ProtectedRoute component={Biometric} allowedRoles={["super_admin", "regional_admin"]} /></Route>
       <Route path="/settings"><ProtectedRoute component={Settings} allowedRoles={["super_admin"]} /></Route>
-      <Route path="/users"><ProtectedRoute component={Users} allowedRoles={["super_admin", "regional_admin"]} /></Route>
+      <Route path="/users"><ProtectedRoute component={Users} allowedRoles={["super_admin"]} /></Route>
       <Route path="/activity-logs"><ProtectedRoute component={ActivityLogs} allowedRoles={["super_admin"]} /></Route>
       <Route component={NotFound} />
     </Switch>
