@@ -45,6 +45,7 @@ export default function Login() {
       else localStorage.removeItem("auth_last_login");
       if (data.loginIp) localStorage.setItem("auth_login_ip", data.loginIp);
       else localStorage.removeItem("auth_login_ip");
+      localStorage.setItem("auth_show_login_info", "1");
       if (data.mustChangePassword) {
         localStorage.setItem("must_change_password", "true");
         setLocation("/change-password");

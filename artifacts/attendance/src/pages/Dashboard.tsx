@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authFetch } from "@/lib/authFetch";
+import { toast } from "sonner";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const api = (p: string) => `${BASE}/api${p}`;
@@ -157,6 +158,33 @@ export default function Dashboard() {
     const t = setInterval(() => { load(); loadDevices(); }, 60000);
     return () => clearInterval(t);
   }, [load, loadDevices]);
+
+  useEffect(() => {
+    const shouldShow = localStorage.getItem("auth_show_login_info");
+    if (!shouldShow) return;
+    localStorage.removeItem("auth_show_login_info");
+
+    const lastLoginRaw = localStorage.getItem("auth_last_login");
+    const loginIp = localStorage.getItem("auth_login_ip");
+
+    if (!lastLoginRaw && !loginIp) return;
+
+    const lastLoginDate = lastLoginRaw ? new Date(lastLoginRaw) : null;
+    const lastLoginStr = lastLoginDate
+      ? lastLoginDate.toLocaleString("en-GB", {
+          day: "2-digit", month: "short", year: "numeric",
+          hour: "2-digit", minute: "2-digit", hour12: true,
+        })
+      : null;
+
+    toast.info("Welcome back!", {
+      description: [
+        lastLoginStr ? `Last login: ${lastLoginStr}` : null,
+        loginIp    ? `From: ${loginIp}`             : null,
+      ].filter(Boolean).join("  ·  "),
+      duration: 8000,
+    });
+  }, []);
 
   const s = summary;
   const attPct = s?.attendancePercentageToday ?? 0;

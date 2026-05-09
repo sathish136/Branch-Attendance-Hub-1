@@ -1,6 +1,7 @@
 import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 import { useEffect, useRef } from "react";
 
 import { AppLayout } from "@/components/Layout";
@@ -187,6 +188,7 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
         </WouterRouter>
+        <Toaster position="top-right" richColors />
       </TooltipProvider>
     </QueryClientProvider>
   );
