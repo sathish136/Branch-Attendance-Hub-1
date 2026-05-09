@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Mail, Lock, AlertCircle, Shield, Clock, Users, BarChart3, Eye, EyeOff } from "lucide-react";
 import srilankaPostLogo from "@/assets/srilanka-post-logo.png";
+import liveuLogo from "@/assets/liveu-logo.png";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -276,9 +277,15 @@ export default function Login() {
                 </div>
               </form>
 
-              <div className="mt-6 pt-5 border-t border-gray-100 flex items-center justify-center gap-2">
-                <img src={srilankaPostLogo} alt="Sri Lanka Post" className="w-5 h-5 rounded object-contain" />
-                <p className="text-[11px] text-gray-400">Powered by <span className="font-semibold text-gray-500">Sri Lanka Post</span> · ZKTeco Integrated</p>
+              <div className="mt-6 pt-5 border-t border-gray-100 space-y-2.5">
+                <div className="flex items-center justify-center gap-2">
+                  <img src={srilankaPostLogo} alt="Sri Lanka Post" className="w-5 h-5 rounded object-contain" />
+                  <p className="text-[11px] text-gray-400">Powered by <span className="font-semibold text-gray-500">Sri Lanka Post</span> · ZKTeco Integrated</p>
+                </div>
+                <div className="flex items-center justify-center gap-1.5">
+                  <img src={liveuLogo} alt="Live U" className="h-4 w-auto object-contain" />
+                  <p className="text-[11px] text-gray-400">Powered by <span className="font-semibold text-gray-500">Live U Pvt Ltd</span></p>
+                </div>
               </div>
             </div>
 
