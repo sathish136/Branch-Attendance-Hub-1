@@ -73,12 +73,12 @@ export default function Users() {
       const payload: any = { fullName: form.fullName, email: form.email, role: form.role, branchIds: form.branchIds, isActive: form.isActive };
       if (form.password) payload.password = form.password;
       update.mutate({ id: editId, data: payload }, {
-        onSuccess: () => { setShowForm(false); toast.success("User updated successfully."); },
+        onSuccess: () => { setShowForm(false); refetch(); toast.success("User updated successfully."); },
         onError: () => toast.error("Failed to update user."),
       });
     } else {
       create.mutate({ data: { ...form } }, {
-        onSuccess: () => { setShowForm(false); toast.success("User created successfully."); },
+        onSuccess: () => { setShowForm(false); refetch(); toast.success("User created successfully."); },
         onError: () => toast.error("Failed to create user."),
       });
     }
