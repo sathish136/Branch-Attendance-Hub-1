@@ -37,6 +37,12 @@ router.post("/login", async (req, res) => {
 
     let user: any = null;
 
+    const clientIp =
+      (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() ||
+      req.socket?.remoteAddress ||
+      req.ip ||
+      "Unknown";
+
     try {
       const [dbUser] = await db.select().from(systemUsers).where(eq(systemUsers.username, username));
       user = dbUser;
@@ -49,6 +55,8 @@ router.post("/login", async (req, res) => {
         return res.json({
           success: true, token,
           mustChangePassword: fallback.mustChangePassword,
+          lastLogin: null,
+          loginIp: clientIp,
           user: { id: fallback.id, username: fallback.username, fullName: fallback.fullName, email: fallback.email, role: fallback.role, branchIds: [], branchNames: [], isActive: true },
         });
       }
@@ -65,6 +73,8 @@ router.post("/login", async (req, res) => {
         return res.json({
           success: true, token,
           mustChangePassword: fallback.mustChangePassword,
+          lastLogin: null,
+          loginIp: clientIp,
           user: { id: fallback.id, username: fallback.username, fullName: fallback.fullName, email: fallback.email, role: fallback.role, branchIds: [], branchNames: [], isActive: true },
         });
       }
@@ -81,11 +91,6 @@ router.post("/login", async (req, res) => {
     }
 
     const previousLastLogin = user.lastLogin ?? null;
-    const clientIp =
-      (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() ||
-      req.socket?.remoteAddress ||
-      req.ip ||
-      "Unknown";
 
     const token = generateToken(user.id);
     createSession(token, user.id);

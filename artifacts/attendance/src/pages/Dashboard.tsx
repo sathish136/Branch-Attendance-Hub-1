@@ -159,7 +159,7 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, [load, loadDevices]);
 
-  const [loginPopup, setLoginPopup] = useState<{ lastLogin: string | null; ip: string | null } | null>(null);
+  const [loginPopup, setLoginPopup] = useState<{ lastLogin: string | null; currentLogin: string; ip: string | null } | null>(null);
 
   useEffect(() => {
     const shouldShow = localStorage.getItem("auth_show_login_info");
@@ -168,8 +168,7 @@ export default function Dashboard() {
 
     const lastLoginRaw = localStorage.getItem("auth_last_login");
     const loginIp = localStorage.getItem("auth_login_ip");
-
-    if (!lastLoginRaw && !loginIp) return;
+    const loginTimeRaw = localStorage.getItem("auth_login_time");
 
     const lastLoginDate = lastLoginRaw ? new Date(lastLoginRaw) : null;
     const lastLoginStr = lastLoginDate
@@ -179,7 +178,13 @@ export default function Dashboard() {
         })
       : null;
 
-    setLoginPopup({ lastLogin: lastLoginStr, ip: loginIp });
+    const currentLoginDate = loginTimeRaw ? new Date(Number(loginTimeRaw)) : new Date();
+    const currentLoginStr = currentLoginDate.toLocaleString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit", hour12: true,
+    });
+
+    setLoginPopup({ lastLogin: lastLoginStr, currentLogin: currentLoginStr, ip: loginIp });
   }, []);
 
   const s = summary;
@@ -279,14 +284,23 @@ export default function Dashboard() {
             </div>
 
             {/* Body */}
-            <div className="px-6 py-5 space-y-4">
+            <div className="px-6 py-5 space-y-3">
+              <div className="flex items-start gap-3 p-3.5 rounded-xl bg-emerald-50 border border-emerald-100">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+                  <Clock className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wide">Current Login</p>
+                  <p className="text-[14px] font-semibold text-gray-900 mt-0.5">{loginPopup.currentLogin}</p>
+                </div>
+              </div>
               {loginPopup.lastLogin && (
                 <div className="flex items-start gap-3 p-3.5 rounded-xl bg-blue-50 border border-blue-100">
                   <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
                     <History className="w-4 h-4 text-blue-600" />
                   </div>
                   <div>
-                    <p className="text-[11px] font-semibold text-blue-500 uppercase tracking-wide">Last Login Date & Time</p>
+                    <p className="text-[11px] font-semibold text-blue-500 uppercase tracking-wide">Previous Login</p>
                     <p className="text-[14px] font-semibold text-gray-900 mt-0.5">{loginPopup.lastLogin}</p>
                   </div>
                 </div>
@@ -302,7 +316,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
-              <p className="text-[11px] text-gray-400 text-center">If this wasn't you, contact your administrator immediately.</p>
+              <p className="text-[11px] text-gray-400 text-center pt-1">If this wasn't you, contact your administrator immediately.</p>
             </div>
 
             {/* Footer */}
