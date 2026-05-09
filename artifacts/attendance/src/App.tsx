@@ -21,6 +21,7 @@ import ActivityLogs from "@/pages/activity-logs/ActivityLogs";
 import NotFound from "@/pages/not-found";
 
 const SESSION_DURATION = 8 * 60 * 60 * 1000;
+const INACTIVITY_TIMEOUT = 15 * 60 * 1000;
 
 function clearAuth() {
   localStorage.removeItem("auth_token");
@@ -71,28 +72,66 @@ window.fetch = async function (...args) {
 
 function AutoLogoutTimer() {
   const [, setLocation] = useLocation();
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    function scheduleLogout() {
-      if (timerRef.current) clearTimeout(timerRef.current);
+    function logout() {
+      clearAuth();
+      queryClient.clear();
+      setLocation("/login");
+    }
+
+    function scheduleSessionLogout() {
+      if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
       const loginTime = Number(localStorage.getItem("auth_login_time") || "0");
       if (!loginTime) return;
       const remaining = SESSION_DURATION - (Date.now() - loginTime);
-      if (remaining <= 0) {
-        clearAuth();
-        queryClient.clear();
-        setLocation("/login");
-        return;
-      }
-      timerRef.current = setTimeout(() => {
-        clearAuth();
-        queryClient.clear();
-        setLocation("/login");
-      }, remaining);
+      if (remaining <= 0) { logout(); return; }
+      sessionTimerRef.current = setTimeout(logout, remaining);
     }
-    scheduleLogout();
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+
+    function startInactivityTimer() {
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = setTimeout(logout, INACTIVITY_TIMEOUT);
+    }
+
+    function cancelInactivityTimer() {
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        startInactivityTimer();
+      } else {
+        cancelInactivityTimer();
+      }
+    }
+
+    function handleBlur() {
+      startInactivityTimer();
+    }
+
+    function handleFocus() {
+      cancelInactivityTimer();
+    }
+
+    scheduleSessionLogout();
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [setLocation]);
 
   return null;
