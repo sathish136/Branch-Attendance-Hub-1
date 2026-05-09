@@ -2,11 +2,13 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { branches, employees } from "@workspace/db/schema";
 import { eq, isNull, sql, and } from "drizzle-orm";
+import { getRequestUser } from "../lib/request-user.js";
 
 const router = Router();
 
 router.get("/", async (req, res) => {
   try {
+    const user = await getRequestUser(req);
     const { parentId, type } = req.query;
     const allBranches = await db.select().from(branches);
     const empCounts = await db.select({
@@ -15,6 +17,10 @@ router.get("/", async (req, res) => {
     }).from(employees).where(eq(employees.status, "active")).groupBy(employees.branchId);
     const countMap = new Map(empCounts.map(r => [r.branchId, r.count]));
     let result = allBranches;
+    if (user && !user.isSuper && user.branchIds.length > 0) {
+      const allowed = new Set(user.branchIds);
+      result = result.filter(b => allowed.has(b.id));
+    }
     if (parentId) result = result.filter(b => b.parentId === Number(parentId));
     if (type) result = result.filter(b => b.type === type);
     const parentMap = new Map(allBranches.map(b => [b.id, b.name]));

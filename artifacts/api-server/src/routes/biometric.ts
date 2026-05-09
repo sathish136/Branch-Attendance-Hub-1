@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { biometricDevices, biometricLogs, branches, employees, attendanceRecords } from "@workspace/db/schema";
 import { eq, and, isNull, inArray, isNotNull } from "drizzle-orm";
 import { autoCreateEmployees, autoSync, processAttendance } from "../lib/biometric-sync.js";
+import { getRequestUser } from "../lib/request-user.js";
 
 const router = Router();
 
@@ -14,12 +15,17 @@ function effectiveStatus(storedStatus: string, lastSync: Date | null): string {
   return age <= ONLINE_THRESHOLD_MS ? "online" : "offline";
 }
 
-router.get("/devices", async (_req, res) => {
+router.get("/devices", async (req, res) => {
   try {
-    const all = await db.select({
+    const reqUser = await getRequestUser(req);
+    let all = await db.select({
       dev: biometricDevices,
       branchName: branches.name,
     }).from(biometricDevices).leftJoin(branches, eq(biometricDevices.branchId, branches.id));
+    if (reqUser && !reqUser.isSuper && reqUser.branchIds.length > 0) {
+      const allowed = new Set(reqUser.branchIds);
+      all = all.filter(r => r.dev.branchId != null && allowed.has(r.dev.branchId));
+    }
     res.json(all.map(r => ({
       ...r.dev,
       branchName: r.branchName || "",

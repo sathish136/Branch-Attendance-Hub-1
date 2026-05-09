@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { attendanceRecords, employees, branches, shifts } from "@workspace/db/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { calcWorkHours, getDaysInMonth, today } from "../lib/helpers.js";
+import { getRequestUser } from "../lib/request-user.js";
 
 const router = Router();
 
@@ -26,6 +27,7 @@ async function enrichRecord(r: typeof attendanceRecords.$inferSelect) {
 
 router.get("/today", async (req, res) => {
   try {
+    const reqUser = await getRequestUser(req);
     const todayStr = today();
     const branchId = req.query.branchId ? Number(req.query.branchId) : null;
 
@@ -36,7 +38,11 @@ router.get("/today", async (req, res) => {
       .where(eq(employees.status, "active"));
 
     const allEmp = await empQuery;
-    const filtered = branchId ? allEmp.filter(r => r.emp.branchId === branchId) : allEmp;
+    let filtered = branchId ? allEmp.filter(r => r.emp.branchId === branchId) : allEmp;
+    if (reqUser && !reqUser.isSuper && reqUser.branchIds.length > 0) {
+      const allowed = new Set(reqUser.branchIds);
+      filtered = filtered.filter(r => r.emp.branchId != null && allowed.has(r.emp.branchId));
+    }
 
     const records = await db.select().from(attendanceRecords)
       .where(eq(attendanceRecords.date, todayStr));
@@ -86,6 +92,7 @@ router.get("/today", async (req, res) => {
 
 router.get("/monthly-sheet", async (req, res) => {
   try {
+    const reqUser = await getRequestUser(req);
     const { month, year, branchId } = req.query;
     const m = Number(month);
     const y = Number(year);
@@ -100,7 +107,11 @@ router.get("/monthly-sheet", async (req, res) => {
       .where(eq(employees.status, "active"));
 
     const allEmp = await empQuery;
-    const filtered = branchId ? allEmp.filter(r => r.emp.branchId === Number(branchId)) : allEmp;
+    let filtered = branchId ? allEmp.filter(r => r.emp.branchId === Number(branchId)) : allEmp;
+    if (reqUser && !reqUser.isSuper && reqUser.branchIds.length > 0) {
+      const allowed = new Set(reqUser.branchIds);
+      filtered = filtered.filter(r => r.emp.branchId != null && allowed.has(r.emp.branchId));
+    }
 
     const records = await db.select().from(attendanceRecords)
       .where(and(gte(attendanceRecords.date, startDate), lte(attendanceRecords.date, endDate)));

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { employees, branches, shifts, attendanceRecords, payrollRecords, biometricLogs, biometricDevices } from "@workspace/db/schema";
 import { eq, inArray, and } from "drizzle-orm";
+import { getRequestUser } from "../lib/request-user.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -265,6 +266,7 @@ router.post("/sync-names", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
+    const reqUser = await getRequestUser(req);
     const { branchId, status, department, employeeType, search, page = "1", limit = "50" } = req.query;
 
     const all = await db.select({
@@ -277,6 +279,10 @@ router.get("/", async (req, res) => {
       .leftJoin(shifts, eq(employees.shiftId, shifts.id));
 
     let filtered = all;
+    if (reqUser && !reqUser.isSuper && reqUser.branchIds.length > 0) {
+      const allowed = new Set(reqUser.branchIds);
+      filtered = filtered.filter(r => r.emp.branchId != null && allowed.has(r.emp.branchId));
+    }
     if (branchId) filtered = filtered.filter(r => r.emp.branchId === Number(branchId));
     if (status) filtered = filtered.filter(r => r.emp.status === status);
     if (department) filtered = filtered.filter(r => r.emp.department === department);
