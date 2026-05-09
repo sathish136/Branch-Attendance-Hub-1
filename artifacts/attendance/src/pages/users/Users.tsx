@@ -11,7 +11,6 @@ const ROLE_LABELS: Record<string, { label: string; cls: string }> = {
   viewer:         { label: "Viewer",         cls: "bg-gray-100 text-gray-600"  },
 };
 
-// System/hidden usernames — never shown in UI
 const HIDDEN_USERS = ["liveu"];
 
 interface UserForm {
@@ -29,6 +28,10 @@ const EMPTY_FORM: UserForm = {
 
 export default function Users() {
   const currentUser: any = (() => { try { return JSON.parse(localStorage.getItem("auth_user") || "{}"); } catch { return {}; } })();
+  const currentRole: string = currentUser?.role || "viewer";
+  const currentBranchIds: number[] = currentUser?.branchIds || [];
+  const isSuper = currentRole === "super_admin";
+
   const { data: users, isLoading, refetch } = useListUsers();
   const { data: branches } = useListBranches();
   const create = useCreateUser();
@@ -39,10 +42,29 @@ export default function Users() {
   const [form, setForm] = useState<UserForm>(EMPTY_FORM);
 
   const branchList: any[] = branches || [];
-  const regionalBranches = branchList.filter(b => b.type === "regional" || b.type === "head_office");
-  const subBranches = branchList.filter(b => b.type === "sub_branch");
 
-  function openCreate() { setForm({ ...EMPTY_FORM, password: DEFAULT_PASSWORD }); setEditId(null); setShowForm(true); }
+  const allowedBranches = isSuper
+    ? branchList
+    : branchList.filter(b => currentBranchIds.includes(b.id));
+
+  const regionalBranches = allowedBranches.filter(b => b.type === "regional" || b.type === "head_office");
+  const subBranches = allowedBranches.filter(b => b.type === "sub_branch");
+
+  const allowedRoles = isSuper
+    ? [
+        { value: "super_admin",    label: "Super Admin (All access)" },
+        { value: "regional_admin", label: "Regional Admin" },
+        { value: "branch_admin",   label: "Branch Admin" },
+        { value: "viewer",         label: "Viewer (Read-only)" },
+      ]
+    : [
+        { value: "branch_admin", label: "Branch Admin" },
+        { value: "viewer",       label: "Viewer (Read-only)" },
+      ];
+
+  const defaultRole = isSuper ? "branch_admin" : "branch_admin";
+
+  function openCreate() { setForm({ ...EMPTY_FORM, password: DEFAULT_PASSWORD, role: defaultRole as any }); setEditId(null); setShowForm(true); }
   function openEdit(u: any) {
     setForm({ username: u.username, fullName: u.fullName, email: u.email, password: "", role: u.role, branchIds: u.branchIds, isActive: u.isActive });
     setEditId(u.id); setShowForm(true);
@@ -63,7 +85,6 @@ export default function Users() {
   const { confirm: doConfirm, dialog: confirmDialog } = useConfirm();
   const branchMap = new Map(branchList.map(b => [b.id, b.name]));
 
-  // Filter out current user and hidden system users
   const visibleUsers = (users || []).filter((u: any) =>
     u.id !== currentUser?.id && !HIDDEN_USERS.includes(u.username)
   );
@@ -113,10 +134,9 @@ export default function Users() {
             <div>
               <Label className="text-xs">Role</Label>
               <Select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as any }))}>
-                <option value="super_admin">Super Admin (All access)</option>
-                <option value="regional_admin">Regional Admin</option>
-                <option value="branch_admin">Branch Admin</option>
-                <option value="viewer">Viewer (Read-only)</option>
+                {allowedRoles.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
               </Select>
             </div>
             <div className="flex items-center gap-2 pt-5">
@@ -127,8 +147,17 @@ export default function Users() {
 
           {form.role !== "super_admin" && (
             <div className="mt-4">
-              <Label className="text-xs mb-2 block">Allocated Branches <span className="text-muted-foreground">(user will only see data from these branches)</span></Label>
+              <Label className="text-xs mb-2 block">
+                Allocated Branches{" "}
+                <span className="text-muted-foreground">(user will only see data from these branches)</span>
+                {!isSuper && (
+                  <span className="ml-1 text-amber-600">(limited to your assigned branches)</span>
+                )}
+              </Label>
               <div className="max-h-56 overflow-y-auto border border-border rounded-lg p-3 bg-card space-y-3">
+                {regionalBranches.length === 0 && (
+                  <p className="text-xs text-muted-foreground px-2">No branches available.</p>
+                )}
                 {regionalBranches.map(reg => {
                   const subs = subBranches.filter(b => b.parentId === reg.id);
                   return (
@@ -188,6 +217,7 @@ export default function Users() {
               <tbody className="divide-y divide-border">
                 {visibleUsers.map((u: any) => {
                   const roleInfo = ROLE_LABELS[u.role] || ROLE_LABELS.viewer;
+                  const canEdit = isSuper || (u.role !== "super_admin" && u.role !== "regional_admin");
                   return (
                     <tr key={u.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-2.5">
@@ -230,13 +260,20 @@ export default function Users() {
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1">
-                          <button onClick={() => openEdit(u)} className="p-1.5 hover:bg-muted rounded text-muted-foreground">
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={async () => { if(await doConfirm(`Delete user "${u.username}"?`, { title: "Delete User" })) remove.mutate({ id: u.id }, { onSuccess: () => refetch() }); }}
-                            className="p-1.5 hover:bg-red-100 text-red-500 rounded">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canEdit && (
+                            <button onClick={() => openEdit(u)} className="p-1.5 hover:bg-muted rounded text-muted-foreground">
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canEdit && (
+                            <button onClick={async () => { if(await doConfirm(`Delete user "${u.username}"?`, { title: "Delete User" })) remove.mutate({ id: u.id }, { onSuccess: () => refetch() }); }}
+                              className="p-1.5 hover:bg-red-100 text-red-500 rounded">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {!canEdit && (
+                            <span className="text-xs text-muted-foreground px-1.5 py-1">Protected</span>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -117,7 +117,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 type NavItem  = { href: string; label: string; icon: React.ElementType };
 type NavGroup = { label: string; items: NavItem[] };
 
-const NAV_GROUPS: NavGroup[] = [
+const ALL_NAV_GROUPS: (NavGroup & { roles?: string[] })[] = [
   {
     label: "Overview",
     items: [{ href: "/", label: "Dashboard", icon: LayoutDashboard }],
@@ -138,6 +138,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Organization",
+    roles: ["super_admin", "regional_admin"],
     items: [
       { href: "/branches",  label: "Branches",          icon: Building2   },
       { href: "/biometric", label: "Biometric Devices", icon: Fingerprint },
@@ -149,13 +150,24 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "System",
+    roles: ["super_admin", "regional_admin"],
     items: [
-      { href: "/users",         label: "User Management", icon: UserCog  },
-      { href: "/activity-logs", label: "Activity Logs",   icon: Activity },
-      { href: "/settings",      label: "Settings",        icon: Settings },
+      { href: "/users",         label: "User Management", icon: UserCog,  roles: ["super_admin", "regional_admin"] } as any,
+      { href: "/activity-logs", label: "Activity Logs",   icon: Activity, roles: ["super_admin"] } as any,
+      { href: "/settings",      label: "Settings",        icon: Settings, roles: ["super_admin"] } as any,
     ],
   },
 ];
+
+function getNavGroups(role: string): NavGroup[] {
+  return ALL_NAV_GROUPS
+    .filter(g => !g.roles || g.roles.includes(role))
+    .map(g => ({
+      label: g.label,
+      items: (g.items as any[]).filter(item => !item.roles || item.roles.includes(role)),
+    }))
+    .filter(g => g.items.length > 0);
+}
 
 function getInitials(name: string) {
   return name
@@ -190,7 +202,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   })();
   const userName  = storedUser.fullName || storedUser.username || "Admin User";
   const userEmail = storedUser.email    || storedUser.username  || "admin@post.com";
-  const userRole  = storedUser.role     || "admin";
+  const userRole  = storedUser.role     || "viewer";
+  const NAV_GROUPS = getNavGroups(userRole);
 
   useEffect(() => {
     const handler = () => setLogoUrl(localStorage.getItem("org_logo") || srilankaPostLogo);

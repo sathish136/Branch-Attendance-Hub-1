@@ -40,6 +40,13 @@ function isAuthValid(): boolean {
   return true;
 }
 
+function getCurrentRole(): string {
+  try {
+    const u = JSON.parse(localStorage.getItem("auth_user") || "{}");
+    return u.role || "viewer";
+  } catch { return "viewer"; }
+}
+
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const queryClient = new QueryClient({
@@ -91,10 +98,19 @@ function AutoLogoutTimer() {
   return null;
 }
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+function ProtectedRoute({
+  component: Component,
+  allowedRoles,
+}: {
+  component: React.ComponentType;
+  allowedRoles?: string[];
+}) {
   if (!isAuthValid()) return <Redirect to="/login" />;
   const mustChange = localStorage.getItem("must_change_password") === "true";
   if (mustChange) return <Redirect to="/change-password" />;
+  if (allowedRoles && !allowedRoles.includes(getCurrentRole())) {
+    return <Redirect to="/" />;
+  }
   return (
     <AppLayout>
       <AutoLogoutTimer />
@@ -112,14 +128,14 @@ function Router() {
       <Route path="/attendance/today"><ProtectedRoute component={TodayAttendance} /></Route>
       <Route path="/attendance/monthly"><ProtectedRoute component={MonthlySheet} /></Route>
       <Route path="/employees"><ProtectedRoute component={EmployeeList} /></Route>
-      <Route path="/branches"><ProtectedRoute component={Branches} /></Route>
+      <Route path="/branches"><ProtectedRoute component={Branches} allowedRoles={["super_admin", "regional_admin"]} /></Route>
       <Route path="/shifts"><ProtectedRoute component={Shifts} /></Route>
       <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
       <Route path="/payroll"><ProtectedRoute component={Payroll} /></Route>
-      <Route path="/biometric"><ProtectedRoute component={Biometric} /></Route>
-      <Route path="/settings"><ProtectedRoute component={Settings} /></Route>
-      <Route path="/users"><ProtectedRoute component={Users} /></Route>
-      <Route path="/activity-logs"><ProtectedRoute component={ActivityLogs} /></Route>
+      <Route path="/biometric"><ProtectedRoute component={Biometric} allowedRoles={["super_admin", "regional_admin"]} /></Route>
+      <Route path="/settings"><ProtectedRoute component={Settings} allowedRoles={["super_admin"]} /></Route>
+      <Route path="/users"><ProtectedRoute component={Users} allowedRoles={["super_admin", "regional_admin"]} /></Route>
+      <Route path="/activity-logs"><ProtectedRoute component={ActivityLogs} allowedRoles={["super_admin"]} /></Route>
       <Route component={NotFound} />
     </Switch>
   );
