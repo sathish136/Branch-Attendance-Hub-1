@@ -3,6 +3,7 @@ import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser, useListBranc
 import { PageHeader, Card, Button, Input, Select, Label, useConfirm } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Plus, Edit2, Trash2, ShieldCheck, Building2, KeyRound } from "lucide-react";
+import { toast } from "sonner";
 
 const ROLE_LABELS: Record<string, { label: string; cls: string }> = {
   super_admin:    { label: "Super Admin",    cls: "bg-red-100 text-red-700"    },
@@ -62,9 +63,7 @@ export default function Users() {
         { value: "viewer",       label: "Viewer (Read-only)" },
       ];
 
-  const defaultRole = isSuper ? "branch_admin" : "branch_admin";
-
-  function openCreate() { setForm({ ...EMPTY_FORM, password: DEFAULT_PASSWORD, role: defaultRole as any }); setEditId(null); setShowForm(true); }
+  function openCreate() { setForm({ ...EMPTY_FORM, password: DEFAULT_PASSWORD, role: "branch_admin" }); setEditId(null); setShowForm(true); }
   function openEdit(u: any) {
     setForm({ username: u.username, fullName: u.fullName, email: u.email, password: "", role: u.role, branchIds: u.branchIds, isActive: u.isActive });
     setEditId(u.id); setShowForm(true);
@@ -73,11 +72,29 @@ export default function Users() {
     if (editId) {
       const payload: any = { fullName: form.fullName, email: form.email, role: form.role, branchIds: form.branchIds, isActive: form.isActive };
       if (form.password) payload.password = form.password;
-      update.mutate({ id: editId, data: payload }, { onSuccess: () => setShowForm(false) });
+      update.mutate({ id: editId, data: payload }, {
+        onSuccess: () => { setShowForm(false); toast.success("User updated successfully."); },
+        onError: () => toast.error("Failed to update user."),
+      });
     } else {
-      create.mutate({ data: { ...form } }, { onSuccess: () => setShowForm(false) });
+      create.mutate({ data: { ...form } }, {
+        onSuccess: () => { setShowForm(false); toast.success("User created successfully."); },
+        onError: () => toast.error("Failed to create user."),
+      });
     }
   }
+
+  function toggleRegional(reg: any) {
+    const subs = subBranches.filter(b => b.parentId === reg.id).map(b => b.id);
+    const allIds = [reg.id, ...subs];
+    const isSelected = form.branchIds.includes(reg.id);
+    if (isSelected) {
+      setForm(f => ({ ...f, branchIds: f.branchIds.filter(id => !allIds.includes(id)) }));
+    } else {
+      setForm(f => ({ ...f, branchIds: [...new Set([...f.branchIds, ...allIds])] }));
+    }
+  }
+
   function toggleBranch(id: number) {
     setForm(f => ({ ...f, branchIds: f.branchIds.includes(id) ? f.branchIds.filter(b => b !== id) : [...f.branchIds, id] }));
   }
@@ -149,9 +166,9 @@ export default function Users() {
             <div className="mt-4">
               <Label className="text-xs mb-2 block">
                 Allocated Branches{" "}
-                <span className="text-muted-foreground">(user will only see data from these branches)</span>
+                <span className="text-muted-foreground">(selecting a regional office also selects all its sub-branches)</span>
                 {!isSuper && (
-                  <span className="ml-1 text-amber-600">(limited to your assigned branches)</span>
+                  <span className="ml-1 text-amber-600"> · limited to your assigned branches</span>
                 )}
               </Label>
               <div className="max-h-56 overflow-y-auto border border-border rounded-lg p-3 bg-card space-y-3">
@@ -160,19 +177,34 @@ export default function Users() {
                 )}
                 {regionalBranches.map(reg => {
                   const subs = subBranches.filter(b => b.parentId === reg.id);
+                  const allSubIds = subs.map(b => b.id);
+                  const regSelected = form.branchIds.includes(reg.id);
+                  const someSubsSelected = allSubIds.some(id => form.branchIds.includes(id));
+                  const allSubsSelected = allSubIds.length > 0 && allSubIds.every(id => form.branchIds.includes(id));
                   return (
                     <div key={reg.id}>
                       <label className={cn(
                         "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-xs transition-colors font-semibold",
-                        form.branchIds.includes(reg.id) ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                        regSelected ? "bg-primary/10 text-primary" : "hover:bg-muted"
                       )}>
-                        <input type="checkbox" checked={form.branchIds.includes(reg.id)} onChange={() => toggleBranch(reg.id)} className="accent-primary" />
+                        <input
+                          type="checkbox"
+                          checked={regSelected}
+                          ref={el => { if (el) el.indeterminate = !regSelected && someSubsSelected && !allSubsSelected; }}
+                          onChange={() => toggleRegional(reg)}
+                          className="accent-primary"
+                        />
                         <span className="truncate">{reg.name}</span>
                         <span className={cn("ml-auto text-xs px-1 py-0.5 rounded shrink-0",
                           reg.type === "head_office" ? "bg-purple-100 text-purple-600" : "bg-blue-100 text-blue-600"
                         )}>
                           {reg.type === "head_office" ? "HO" : "RO"}
                         </span>
+                        {subs.length > 0 && (
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {allSubIds.filter(id => form.branchIds.includes(id)).length + (regSelected ? 1 : 0)}/{subs.length + 1}
+                          </span>
+                        )}
                       </label>
                       {subs.map(sub => (
                         <label key={sub.id} className={cn(
@@ -217,12 +249,18 @@ export default function Users() {
               <tbody className="divide-y divide-border">
                 {visibleUsers.map((u: any) => {
                   const roleInfo = ROLE_LABELS[u.role] || ROLE_LABELS.viewer;
-                  const canEdit = isSuper || (u.role !== "super_admin" && u.role !== "regional_admin");
+                  const isSelf = u.id === currentUser?.id;
+                  const canEdit = isSuper
+                    ? !isSelf
+                    : (u.role !== "super_admin" && u.role !== "regional_admin");
                   return (
                     <tr key={u.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono font-medium">{u.username}</span>
+                          {isSelf && (
+                            <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] font-medium">You</span>
+                          )}
                           {u.mustChangePassword && (
                             <span className="flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-600 px-1.5 py-0.5 rounded text-[10px] font-medium">
                               <KeyRound className="w-2.5 h-2.5" /> First Login
@@ -260,19 +298,30 @@ export default function Users() {
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1">
-                          {canEdit && (
-                            <button onClick={() => openEdit(u)} className="p-1.5 hover:bg-muted rounded text-muted-foreground">
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {canEdit && (
-                            <button onClick={async () => { if(await doConfirm(`Delete user "${u.username}"?`, { title: "Delete User" })) remove.mutate({ id: u.id }, { onSuccess: () => refetch() }); }}
-                              className="p-1.5 hover:bg-red-100 text-red-500 rounded">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {!canEdit && (
-                            <span className="text-xs text-muted-foreground px-1.5 py-1">Protected</span>
+                          {canEdit ? (
+                            <>
+                              <button onClick={() => openEdit(u)} className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Edit user">
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (await doConfirm(`Delete user "${u.username}"?`, { title: "Delete User" })) {
+                                    remove.mutate({ id: u.id }, {
+                                      onSuccess: () => { refetch(); toast.success(`User "${u.username}" deleted.`); },
+                                      onError: () => toast.error("Failed to delete user."),
+                                    });
+                                  }
+                                }}
+                                className="p-1.5 hover:bg-red-100 text-red-500 rounded"
+                                title="Delete user"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground px-1.5 py-1">
+                              {isSelf ? "Current user" : "Protected"}
+                            </span>
                           )}
                         </div>
                       </td>
