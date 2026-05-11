@@ -203,7 +203,6 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
   const [formError, setFormError] = useState<string>("");
 
   useEffect(() => {
-    if (emp) return;
     const branchId = Number(form.branchId);
     if (!branchId) return;
     const nextIdToken = localStorage.getItem("auth_token");
@@ -212,7 +211,10 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
       .then(data => {
         if (!data.noRegional) {
           setRegionalInfo({ prefix: data.prefix, nextId: data.nextId, regionalName: data.regionalName });
-          setForm(f => ({ ...f, employeeId: data.nextId }));
+          // Only auto-fill employee ID when creating new employee
+          if (!emp) {
+            setForm(f => ({ ...f, employeeId: data.nextId }));
+          }
           setEmpIdError("");
         } else {
           setRegionalInfo(null);
@@ -526,25 +528,17 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
                         className={cn(
                           "pl-8 font-mono uppercase",
                           empIdError ? "border-red-400 focus:border-red-500" : "",
-                          emp ? "bg-muted/60 cursor-not-allowed text-muted-foreground" : ""
                         )}
-                        placeholder={regionalInfo ? `${regionalInfo.prefix}001` : "EMP-0001"}
+                        placeholder={regionalInfo ? `${regionalInfo.prefix}25` : "EMP-0001"}
                         value={form.employeeId}
                         onChange={e => { set("employeeId", e.target.value.toUpperCase()); setEmpIdError(""); }}
-                        disabled={!!emp}
-                        title={emp ? "Employee ID cannot be changed after creation" : ""}
                       />
                     </div>
                     {empIdError ? (
                       <p className="text-xs text-red-500 flex items-start gap-1 mt-1.5">
                         <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />{empIdError}
                       </p>
-                    ) : emp ? (
-                      <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-                        <Shield className="w-3 h-3 shrink-0" />
-                        Employee ID is permanent and cannot be changed.
-                      </p>
-                    ) : regionalInfo && !emp ? (
+                    ) : regionalInfo ? (
                       <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
                         Suggested next ID: <span className="font-mono font-semibold text-foreground">{regionalInfo.nextId}</span>

@@ -11,8 +11,12 @@ import { autoSync } from "../lib/biometric-sync.js";
 const NULLABLE_DATE_FIELDS = ["dateOfBirth"];
 const INT_FIELDS = ["branchId", "shiftId", "reportingManagerId"];
 
+const READONLY_FIELDS = ["id", "createdAt", "branchName", "shiftName"];
+
 function sanitizeEmployeeBody(body: Record<string, any>) {
   const out = { ...body };
+  // Strip server-managed / read-only fields that must never be written
+  for (const f of READONLY_FIELDS) delete out[f];
   // joiningDate is NOT NULL — default to today if missing
   if (!out.joiningDate || out.joiningDate === "") {
     out.joiningDate = new Date().toISOString().slice(0, 10);
