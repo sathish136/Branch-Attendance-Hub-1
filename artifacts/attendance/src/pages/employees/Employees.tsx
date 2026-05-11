@@ -193,6 +193,7 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
     reportingManagerId: emp.reportingManagerId || "",
     nicNumber: emp.nicNumber || "",
     passportNumber: emp.passportNumber || "",
+    biometricId: emp.biometricId ?? "",
   } : { ...EMPTY_EMP, branchId: 0 });
   const [photoPreview, setPhotoPreview] = useState<string>(emp?.photoUrl || "");
   const [photoUploading, setPhotoUploading] = useState(false);
