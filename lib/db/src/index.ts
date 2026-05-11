@@ -3,6 +3,11 @@ import pg from "pg";
 import * as schema from "./schema";
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
+import { config as dotenvConfig } from "dotenv";
+
+// Load .env from the project root (works locally; no-op if file absent)
+dotenvConfig({ path: join(process.cwd(), ".env") });
+dotenvConfig({ path: join(process.cwd(), "../../.env") }); // when run from a sub-package
 
 const { Pool } = pg;
 
@@ -12,11 +17,16 @@ const WORKSPACE_DIR = process.env.REPL_HOME || "/home/runner/workspace";
 export const DB_URL_PATH = join(WORKSPACE_DIR, ".colombo_db_url");
 
 function getConnectionString() {
+  // 1. Explicit Colombo override
   if (process.env.COLOMBO_DB_URL) return process.env.COLOMBO_DB_URL;
+  // 2. Generic DATABASE_URL (standard for most local setups)
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+  // 3. Persisted URL from the UI settings page
   try {
     const url = readFileSync(DB_URL_PATH, "utf-8").trim();
     if (url) return url;
   } catch {}
+  // 4. Hardcoded production fallback
   return DEFAULT_DATABASE_URL;
 }
 
