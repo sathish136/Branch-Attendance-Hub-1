@@ -7,6 +7,7 @@
     "hello": "tsx ./src/hello.ts",
     "seed": "tsx ./src/seed.ts",
     "patch-employee-ids": "tsx ./src/patch-employee-ids.ts",
+    "fix-no-biometric-emp": "tsx ./src/fix-no-biometric-emp.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
