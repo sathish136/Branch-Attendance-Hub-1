@@ -37,15 +37,15 @@ os.environ.update({k: v for k, v in env.items() if k not in os.environ})
 
 # -- DB connection ------------------------------------------------------------
 
+DEFAULT_DB_URL = "postgresql://colombo_user:wtt%40adm123@localhost:5432/colombo"
+
 conn_str = (
     os.environ.get("COLOMBO_DB_URL") or
-    os.environ.get("DATABASE_URL")
+    os.environ.get("DATABASE_URL") or
+    DEFAULT_DB_URL
 )
 
-if not conn_str:
-    print("ERROR: No database URL found.")
-    print("Set COLOMBO_DB_URL or DATABASE_URL in your .env file.")
-    sys.exit(1)
+print("  Using DB: " + conn_str.split("@")[-1])  # print host/db only, hide password
 
 try:
     import psycopg2
