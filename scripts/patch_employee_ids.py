@@ -129,8 +129,6 @@ if not updates and not (fix_pending and no_bio):
     sys.exit(0)
 
 try:
-    conn.autocommit = False
-
     if updates:
         print("Pass 1/2: Setting temporary IDs to avoid unique conflicts...")
         for u in updates:
