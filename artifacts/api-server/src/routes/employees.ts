@@ -366,6 +366,16 @@ router.put("/:id", async (req, res) => {
     if (body.firstName && body.lastName) {
       body.fullName = `${body.firstName} ${body.lastName}`;
     }
+    // If biometric ID changed, auto-derive employee ID from it
+    if (body.biometricId && body.branchId) {
+      const regional = await getRegionalInfo(Number(body.branchId));
+      if (regional) {
+        const numeric = String(body.biometricId).replace(/\D/g, "");
+        if (numeric) {
+          body.employeeId = `${regional.regionalCode.toUpperCase()}${numeric}`;
+        }
+      }
+    }
     if (body.employeeId && body.branchId) {
       const check = await validateEmployeeId(body.employeeId, Number(body.branchId), dbId);
       if (!check.valid) {

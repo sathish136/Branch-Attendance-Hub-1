@@ -633,7 +633,21 @@ function EmployeeDrawer({ emp, branches, onClose, onSaved }: { emp?: any; branch
                       </div>
                       <div className="relative">
                         <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-blue-400" />
-                        <Input className="pl-8 border-blue-200 bg-white focus:border-blue-400" placeholder="e.g. 101" value={form.biometricId} onChange={e => set("biometricId", e.target.value)} />
+                        <Input
+                          className="pl-8 border-blue-200 bg-white focus:border-blue-400"
+                          placeholder="e.g. 25"
+                          value={form.biometricId}
+                          onChange={e => {
+                            const bio = e.target.value;
+                            set("biometricId", bio);
+                            // Auto-update employee ID: regional prefix + biometric number
+                            const numeric = bio.replace(/\D/g, "");
+                            if (numeric && regionalInfo?.prefix) {
+                              set("employeeId", `${regionalInfo.prefix}${numeric}`);
+                              setEmpIdError("");
+                            }
+                          }}
+                        />
                       </div>
                       <p className="text-[10px] text-blue-600 mt-1.5 flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3 shrink-0" />
