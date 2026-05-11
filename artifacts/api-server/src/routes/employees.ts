@@ -67,7 +67,7 @@ async function validateEmployeeId(
   if (!empIdUpper.startsWith(prefix)) {
     return {
       valid: false,
-      message: `Employee ID must start with regional code "${prefix}" (e.g. ${prefix}001). This branch belongs to the ${regional.regionalName} Regional Office.`,
+      message: `Employee ID must start with regional code "${prefix}" (e.g. ${prefix}0025 for biometric 25). This branch belongs to the ${regional.regionalName} Regional Office.`,
     };
   }
 
@@ -140,7 +140,13 @@ router.post("/import", async (req, res) => {
     const [branch] = await db.select().from(branches).where(eq(branches.id, Number(branchId)));
     if (!branch) { res.status(404).json({ message: "Branch not found", success: false }); return; }
 
-    const branchCode = branch.code.toUpperCase();
+    // Resolve regional code: sub-branches use parent's code
+    let regionalCode = branch.code.toUpperCase();
+    if (branch.type === "sub_branch" && branch.parentId) {
+      const [parent] = await db.select().from(branches).where(eq(branches.id, branch.parentId));
+      if (parent) regionalCode = parent.code.toUpperCase();
+    }
+
     const today = new Date().toISOString().split("T")[0];
 
     const results: Array<{ name: string; biometricId: string; employeeId: string; status: "created" | "skipped"; reason?: string }> = [];
@@ -152,7 +158,10 @@ router.post("/import", async (req, res) => {
         results.push({ name, biometricId: bioId, employeeId: "", status: "skipped", reason: "Missing name or biometric ID" });
         continue;
       }
-      const empId = `${branchCode}${bioId}`;
+      // Extract numeric part from biometric ID (strip any non-numeric prefix like "BIO-")
+      const numericMatch = bioId.match(/(\d+)$/);
+      const numericBio = numericMatch ? numericMatch[1] : bioId;
+      const empId = `${regionalCode}${numericBio}`;
 
       const existingBio = await db.select({ id: employees.id }).from(employees)
         .where(and(eq(employees.biometricId, bioId), eq(employees.branchId, Number(branchId))))

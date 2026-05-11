@@ -25,18 +25,28 @@ async function main() {
 
     console.log("Fetching all employees ordered by id...");
     const { rows: allEmployees } = await client.query(
-      `SELECT id, employee_id, branch_id FROM employees ORDER BY id ASC`
+      `SELECT id, employee_id, biometric_id, branch_id FROM employees ORDER BY id ASC`
     );
 
     console.log(`Found ${allEmployees.length} employees. Computing new IDs...`);
 
-    const regionSeq: Record<string, number> = {};
     const updates: Array<{ id: number; oldId: string; newId: string }> = [];
 
     for (const emp of allEmployees) {
       const prefix = getRegionalCode(emp.branch_id).toUpperCase();
-      regionSeq[prefix] = (regionSeq[prefix] || 0) + 1;
-      const newId = `${prefix}${String(regionSeq[prefix]).padStart(3, "0")}`;
+
+      let rawBioId = (emp.biometric_id || "").trim();
+      // Strip non-numeric prefix like "BIO-" to extract the number
+      const numericMatch = rawBioId.match(/(\d+)$/);
+      const numericBioId = numericMatch ? numericMatch[1] : null;
+
+      if (!numericBioId) {
+        console.log(`  #${emp.id}: Skipped (no numeric biometric ID) — current: ${emp.employee_id}`);
+        continue;
+      }
+
+      const newId = `${prefix}${numericBioId}`;
+
       if (emp.employee_id !== newId) {
         updates.push({ id: emp.id, oldId: emp.employee_id, newId });
       }
