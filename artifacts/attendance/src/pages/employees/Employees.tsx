@@ -926,7 +926,7 @@ function ImportModal({ branches, onClose, onImported }: {
   const [branchId, setBranchId] = useState<number>(0);
   const [rows, setRows] = useState<Array<{ name: string; biometricId: string }>>([]);
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ created: number; skipped: number; results: any[] } | null>(null);
+  const [result, setResult] = useState<{ created: number; updated: number; skipped: number; results: any[] } | null>(null);
   const [error, setError] = useState("");
   const [manualName, setManualName] = useState("");
   const [manualBioId, setManualBioId] = useState("");
@@ -994,7 +994,7 @@ function ImportModal({ branches, onClose, onImported }: {
       const data = await resp.json();
       if (!resp.ok) { setError(data.message || "Import failed"); return; }
       setResult(data);
-      if (data.created > 0) onImported();
+      if (data.created > 0 || data.updated > 0) onImported();
     } catch (e: any) {
       setError(e.message || "Network error");
     } finally {
@@ -1173,8 +1173,24 @@ function ImportModal({ branches, onClose, onImported }: {
               </div>
               <div className="flex gap-4 text-sm">
                 <span className="text-green-700"><span className="font-bold">{result.created}</span> created</span>
+                {result.updated > 0 && <span className="text-blue-600"><span className="font-bold">{result.updated}</span> updated</span>}
                 {result.skipped > 0 && <span className="text-amber-600"><span className="font-bold">{result.skipped}</span> skipped</span>}
               </div>
+              {result.results.some((r: any) => r.status === "updated") && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50/50 overflow-hidden">
+                  <div className="px-3 py-1.5 bg-blue-100/50 border-b border-blue-200 text-xs font-semibold text-blue-700">Updated entries</div>
+                  <div className="max-h-32 overflow-y-auto">
+                    {result.results.filter((r: any) => r.status === "updated").map((r: any, i: number) => (
+                      <div key={i} className="px-3 py-1.5 text-xs border-b border-blue-100 last:border-0 flex items-center gap-2">
+                        <CheckCircle2 className="w-3 h-3 text-blue-500 shrink-0" />
+                        <span className="font-medium">{r.name}</span>
+                        <span className="font-mono text-muted-foreground">{r.biometricId}</span>
+                        <span className="text-blue-600 ml-auto">{r.employeeId}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {result.results.some((r: any) => r.status === "skipped") && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
                   <div className="px-3 py-1.5 bg-amber-100/50 border-b border-amber-200 text-xs font-semibold text-amber-700">Skipped entries</div>

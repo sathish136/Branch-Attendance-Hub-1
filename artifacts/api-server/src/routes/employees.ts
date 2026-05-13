@@ -153,7 +153,7 @@ router.post("/import", async (req, res) => {
 
     const today = new Date().toISOString().split("T")[0];
 
-    const results: Array<{ name: string; biometricId: string; employeeId: string; status: "created" | "skipped"; reason?: string }> = [];
+    const results: Array<{ name: string; biometricId: string; employeeId: string; status: "created" | "updated" | "skipped"; reason?: string }> = [];
 
     for (const row of rows) {
       const name = (row.name || "").trim();
@@ -167,25 +167,46 @@ router.post("/import", async (req, res) => {
       const numericBio = numericMatch ? numericMatch[1] : bioId;
       const empId = `${regionalCode}${numericBio}`;
 
+      const parts = name.trim().split(/\s+/);
+      const firstName = parts[0] || name;
+      const lastName = parts.slice(1).join(" ") || "";
+
+      // If biometric ID already exists in this branch — update the record
       const existingBio = await db.select({ id: employees.id }).from(employees)
         .where(and(eq(employees.biometricId, bioId), eq(employees.branchId, Number(branchId))))
         .then(r => r[0]);
       if (existingBio) {
-        results.push({ name, biometricId: bioId, employeeId: empId, status: "skipped", reason: "Biometric ID already exists in this branch" });
+        try {
+          await db.update(employees).set({
+            fullName: name,
+            firstName,
+            lastName,
+            employeeId: empId,
+          }).where(eq(employees.id, existingBio.id));
+          results.push({ name, biometricId: bioId, employeeId: empId, status: "updated" });
+        } catch (e: any) {
+          results.push({ name, biometricId: bioId, employeeId: empId, status: "skipped", reason: e?.message || "Update error" });
+        }
         continue;
       }
 
+      // If employee ID already exists (different branch) — update name on that record
       const existingEmpId = await db.select({ id: employees.id }).from(employees)
         .where(eq(employees.employeeId, empId))
         .then(r => r[0]);
       if (existingEmpId) {
-        results.push({ name, biometricId: bioId, employeeId: empId, status: "skipped", reason: "Employee ID already exists" });
+        try {
+          await db.update(employees).set({
+            fullName: name,
+            firstName,
+            lastName,
+          }).where(eq(employees.id, existingEmpId.id));
+          results.push({ name, biometricId: bioId, employeeId: empId, status: "updated" });
+        } catch (e: any) {
+          results.push({ name, biometricId: bioId, employeeId: empId, status: "skipped", reason: e?.message || "Update error" });
+        }
         continue;
       }
-
-      const parts = name.trim().split(/\s+/);
-      const firstName = parts[0] || name;
-      const lastName = parts.slice(1).join(" ") || "";
 
       try {
         await db.insert(employees).values({
@@ -210,6 +231,7 @@ router.post("/import", async (req, res) => {
     }
 
     const created = results.filter(r => r.status === "created").length;
+    const updated = results.filter(r => r.status === "updated").length;
     const skipped = results.filter(r => r.status === "skipped").length;
 
     if (created > 0) {
@@ -219,7 +241,7 @@ router.post("/import", async (req, res) => {
       }
     }
 
-    res.json({ success: true, created, skipped, results });
+    res.json({ success: true, created, updated, skipped, results });
   } catch (e) { console.error(e); res.status(500).json({ message: "Error", success: false }); }
 });
 
