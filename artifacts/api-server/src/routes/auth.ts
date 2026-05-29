@@ -18,7 +18,7 @@ const FALLBACK_USERS = [
   {
     id: 0,
     username: "admin",
-    password: "Colombo@555",
+    password: "admin123",
     fullName: "Super Admin",
     email: "admin@slpost.lk",
     role: "super_admin" as const,
