@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useListBiometricDevices, useUpdateBiometricDevice, useDeleteBiometricDevice, useListBranches, useListBiometricLogs } from "@workspace/api-client-react";
 import { PageHeader, Card, Button, Select, Label, useConfirm } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy, Radio, XCircle } from "lucide-react";
+import { Edit2, Trash2, Wifi, WifiOff, AlertCircle, RefreshCw, Info, Copy, Radio, XCircle, Search, X } from "lucide-react";
 import { authFetch } from "@/lib/authFetch";
 
 const DEVICE_STATUS: Record<string, { cls: string; icon: React.ElementType }> = {
@@ -171,6 +171,8 @@ function DevicesTab() {
 
   const [editDevice, setEditDevice] = useState<any | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [filterBranchId, setFilterBranchId] = useState<string>("");
 
   function handleSaved(msg: string) {
     setSuccessMsg(msg);
@@ -179,6 +181,24 @@ function DevicesTab() {
   }
 
   const unassignedDevices = (devices || []).filter((d: any) => !d.branchId);
+
+  const filtered = useMemo(() => {
+    let list = devices || [];
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((d: any) =>
+        d.name?.toLowerCase().includes(q) ||
+        d.serialNumber?.toLowerCase().includes(q) ||
+        d.model?.toLowerCase().includes(q)
+      );
+    }
+    if (filterBranchId) {
+      list = list.filter((d: any) =>
+        filterBranchId === "__unassigned__" ? !d.branchId : String(d.branchId) === filterBranchId
+      );
+    }
+    return list;
+  }, [devices, search, filterBranchId]);
 
   return (
     <div className="space-y-4">
@@ -190,6 +210,47 @@ function DevicesTab() {
           onSaved={handleSaved}
         />
       )}
+
+      {/* Search & Filter bar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search by device name or serial no..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-8 pr-8 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <select
+          value={filterBranchId}
+          onChange={e => setFilterBranchId(e.target.value)}
+          className="text-sm border border-border rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 min-w-[180px]"
+        >
+          <option value="">All Branches</option>
+          <option value="__unassigned__">⚠ Unassigned</option>
+          {(branches || []).map((b: any) => (
+            <option key={b.id} value={String(b.id)}>{b.name}</option>
+          ))}
+        </select>
+        {(search || filterBranchId) && (
+          <button
+            onClick={() => { setSearch(""); setFilterBranchId(""); }}
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-1 rounded border border-border"
+          >
+            <X className="w-3 h-3" /> Clear
+          </button>
+        )}
+        <span className="text-xs text-muted-foreground ml-auto">
+          {filtered.length} of {(devices || []).length} device{(devices || []).length !== 1 ? "s" : ""}
+        </span>
+      </div>
 
       {unassignedDevices.length > 0 && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 px-4 py-3 rounded-lg text-sm text-amber-900">
@@ -230,14 +291,14 @@ function DevicesTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {(devices || []).map((d: any) => {
+                {filtered.map((d: any) => {
                   const st = DEVICE_STATUS[d.status] || DEVICE_STATUS.offline;
                   const StatusIcon = st.icon;
                   return (
                     <tr key={d.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-2 font-medium">{d.name}</td>
                       <td className="px-3 py-2 text-muted-foreground">{d.model}</td>
-                      <td className="px-3 py-2 font-mono text-muted-foreground">{d.serialNumber}</td>
+                      <td className="px-3 py-2 font-mono text-muted-foreground">{d.serialNumber || "—"}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         {d.branchName
                           ? <span className="text-muted-foreground">{d.branchName}</span>
@@ -268,7 +329,7 @@ function DevicesTab() {
                     </tr>
                   );
                 })}
-                {!devices?.length && (
+                {!devices?.length ? (
                   <tr><td colSpan={8} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Radio className="w-8 h-8 text-muted-foreground/40" />
@@ -276,7 +337,15 @@ function DevicesTab() {
                       <p className="text-xs">Configure your ZKTeco machine to push to port <strong>3333</strong> — it will appear here automatically.</p>
                     </div>
                   </td></tr>
-                )}
+                ) : filtered.length === 0 ? (
+                  <tr><td colSpan={8} className="text-center py-10 text-muted-foreground">
+                    <div className="flex flex-col items-center gap-2">
+                      <Search className="w-7 h-7 text-muted-foreground/40" />
+                      <p>No devices match your search.</p>
+                      <button onClick={() => { setSearch(""); setFilterBranchId(""); }} className="text-xs text-primary underline">Clear filters</button>
+                    </div>
+                  </td></tr>
+                ) : null}
               </tbody>
             </table>
           </div>
