@@ -173,6 +173,7 @@ function DevicesTab() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterBranchId, setFilterBranchId] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<string>("");
 
   function handleSaved(msg: string) {
     setSuccessMsg(msg);
@@ -181,6 +182,16 @@ function DevicesTab() {
   }
 
   const unassignedDevices = (devices || []).filter((d: any) => !d.branchId);
+
+  // Only branches that have at least one device assigned
+  const assignedBranches = useMemo(() => {
+    const seen = new Map<number, string>();
+    for (const d of (devices || [])) {
+      if (d.branchId && d.branchName) seen.set(d.branchId, d.branchName);
+    }
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [devices]);
 
   const filtered = useMemo(() => {
     let list = devices || [];
@@ -197,8 +208,11 @@ function DevicesTab() {
         filterBranchId === "__unassigned__" ? !d.branchId : String(d.branchId) === filterBranchId
       );
     }
+    if (filterStatus) {
+      list = list.filter((d: any) => d.status === filterStatus);
+    }
     return list;
-  }, [devices, search, filterBranchId]);
+  }, [devices, search, filterBranchId, filterStatus]);
 
   return (
     <div className="space-y-4">
@@ -234,14 +248,24 @@ function DevicesTab() {
           className="text-sm border border-border rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 min-w-[180px]"
         >
           <option value="">All Branches</option>
-          <option value="__unassigned__">⚠ Unassigned</option>
-          {(branches || []).map((b: any) => (
+          {unassignedDevices.length > 0 && <option value="__unassigned__">⚠ Unassigned</option>}
+          {assignedBranches.map(b => (
             <option key={b.id} value={String(b.id)}>{b.name}</option>
           ))}
         </select>
-        {(search || filterBranchId) && (
+        <select
+          value={filterStatus}
+          onChange={e => setFilterStatus(e.target.value)}
+          className="text-sm border border-border rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 min-w-[130px]"
+        >
+          <option value="">All Types</option>
+          <option value="online">🟢 Online</option>
+          <option value="offline">⚫ Offline</option>
+          <option value="error">🔴 Error</option>
+        </select>
+        {(search || filterBranchId || filterStatus) && (
           <button
-            onClick={() => { setSearch(""); setFilterBranchId(""); }}
+            onClick={() => { setSearch(""); setFilterBranchId(""); setFilterStatus(""); }}
             className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-1 rounded border border-border"
           >
             <X className="w-3 h-3" /> Clear
