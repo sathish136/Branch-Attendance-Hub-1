@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useListUsers, useCreateUser, useUpdateUser, useDeleteUser, useListBranches } from "@workspace/api-client-react";
 import { PageHeader, Card, Button, Input, Select, Label, useConfirm } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { Plus, Edit2, Trash2, ShieldCheck, Building2, KeyRound } from "lucide-react";
+import { Plus, Edit2, Trash2, ShieldCheck, Building2, KeyRound, RotateCcw, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
+import { authFetch } from "@/lib/authFetch";
 
 const ROLE_LABELS: Record<string, { label: string; cls: string }> = {
   super_admin:    { label: "Super Admin",    cls: "bg-red-100 text-red-700"    },
@@ -12,7 +13,17 @@ const ROLE_LABELS: Record<string, { label: string; cls: string }> = {
   viewer:         { label: "Viewer",         cls: "bg-gray-100 text-gray-600"  },
 };
 
+const ROLE_DEFAULT_PASSWORDS: Record<string, string> = {
+  super_admin:    "Colombo@555",
+  regional_admin: "Regpo@123",
+  branch_admin:   "Subpo@123",
+  viewer:         "Subpo@123",
+};
+
 const HIDDEN_USERS = ["liveu"];
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+function apiUrl(path: string) { return `${BASE}/api${path}`; }
 
 interface UserForm {
   username: string; fullName: string; email: string; password: string;
@@ -20,10 +31,12 @@ interface UserForm {
   branchIds: number[]; isActive: boolean;
 }
 
-const DEFAULT_PASSWORD = "Sweetsk5$$##";
+function getDefaultPassword(role: string): string {
+  return ROLE_DEFAULT_PASSWORDS[role] ?? "Subpo@123";
+}
 
 const EMPTY_FORM: UserForm = {
-  username: "", fullName: "", email: "", password: DEFAULT_PASSWORD,
+  username: "", fullName: "", email: "", password: getDefaultPassword("branch_admin"),
   role: "branch_admin", branchIds: [], isActive: true,
 };
 
@@ -41,6 +54,8 @@ export default function Users() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<UserForm>(EMPTY_FORM);
+  const [showPwd, setShowPwd] = useState(false);
+  const [resettingId, setResettingId] = useState<number | null>(null);
 
   const branchList: any[] = branches || [];
 
@@ -63,11 +78,25 @@ export default function Users() {
         { value: "viewer",       label: "Viewer (Read-only)" },
       ];
 
-  function openCreate() { setForm({ ...EMPTY_FORM, password: DEFAULT_PASSWORD, role: "branch_admin" }); setEditId(null); setShowForm(true); }
+  function openCreate() {
+    const defaultRole = "branch_admin";
+    setForm({ ...EMPTY_FORM, role: defaultRole, password: getDefaultPassword(defaultRole) });
+    setEditId(null); setShowForm(true); setShowPwd(false);
+  }
   function openEdit(u: any) {
     setForm({ username: u.username, fullName: u.fullName, email: u.email, password: "", role: u.role, branchIds: u.branchIds, isActive: u.isActive });
-    setEditId(u.id); setShowForm(true);
+    setEditId(u.id); setShowForm(true); setShowPwd(false);
   }
+
+  function handleRoleChange(role: any) {
+    // Auto-update password when role changes (only for new users)
+    if (!editId) {
+      setForm(f => ({ ...f, role, password: getDefaultPassword(role) }));
+    } else {
+      setForm(f => ({ ...f, role }));
+    }
+  }
+
   function handleSave() {
     if (editId) {
       const payload: any = { fullName: form.fullName, email: form.email, role: form.role, branchIds: form.branchIds, isActive: form.isActive };
@@ -78,9 +107,28 @@ export default function Users() {
       });
     } else {
       create.mutate({ data: { ...form } }, {
-        onSuccess: () => { setShowForm(false); refetch(); toast.success("User created successfully."); },
+        onSuccess: () => { setShowForm(false); refetch(); toast.success("User created. They must change their password on first login."); },
         onError: () => toast.error("Failed to create user."),
       });
+    }
+  }
+
+  async function handleResetPassword(u: any) {
+    if (!await doConfirm(
+      `Reset password for "${u.username}" to the default for their role (${ROLE_DEFAULT_PASSWORDS[u.role] ?? "Subpo@123"})?\n\nThey will be required to change it on next login.`,
+      { title: "Reset Password", confirmLabel: "Reset", danger: true }
+    )) return;
+
+    setResettingId(u.id);
+    try {
+      const res = await authFetch(apiUrl(`/users/${u.id}/reset-password`), { method: "POST" });
+      if (!res.ok) throw new Error();
+      toast.success(`Password reset for "${u.username}". Default: ${ROLE_DEFAULT_PASSWORDS[u.role] ?? "Subpo@123"}`);
+      refetch();
+    } catch {
+      toast.error("Failed to reset password.");
+    } finally {
+      setResettingId(null);
     }
   }
 
@@ -106,6 +154,8 @@ export default function Users() {
     !HIDDEN_USERS.includes(u.username)
   );
 
+  const defaultPwdForRole = getDefaultPassword(form.role);
+
   return (
     <div className="space-y-4">
       {confirmDialog}
@@ -126,7 +176,11 @@ export default function Users() {
           {!editId && (
             <div className="mb-3 flex items-start gap-2 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-lg px-3 py-2">
               <KeyRound className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              <span>New users will be required to change their password on first login.</span>
+              <span>
+                Default password for <strong>{ROLE_LABELS[form.role]?.label}</strong> is{" "}
+                <code className="font-mono bg-blue-100 px-1 rounded">{defaultPwdForRole}</code>.
+                User must change it on first login.
+              </span>
             </div>
           )}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -146,11 +200,27 @@ export default function Users() {
             </div>
             <div>
               <Label className="text-xs">{editId ? "New Password (leave blank to keep)" : "Temporary Password"}</Label>
-              <Input type="password" placeholder={editId ? "Leave blank to keep" : "Set temporary password"} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+              <div className="relative">
+                <Input
+                  type={showPwd ? "text" : "password"}
+                  placeholder={editId ? "Leave blank to keep" : "Temporary password"}
+                  value={form.password}
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  className="pr-9"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwd(v => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  tabIndex={-1}
+                >
+                  {showPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
             <div>
               <Label className="text-xs">Role</Label>
-              <Select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as any }))}>
+              <Select value={form.role} onChange={e => handleRoleChange(e.target.value as any)}>
                 {allowedRoles.map(r => (
                   <option key={r.value} value={r.value}>{r.label}</option>
                 ))}
@@ -254,6 +324,7 @@ export default function Users() {
                     ? true
                     : (u.role !== "super_admin" && u.role !== "regional_admin");
                   const canDelete = canEdit && !isSelf && u.role !== "super_admin";
+                  const canReset = isSuper && !isSelf;
                   return (
                     <tr key={u.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-2.5">
@@ -264,7 +335,7 @@ export default function Users() {
                           )}
                           {u.mustChangePassword && (
                             <span className="flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-600 px-1.5 py-0.5 rounded text-[10px] font-medium">
-                              <KeyRound className="w-2.5 h-2.5" /> First Login
+                              <KeyRound className="w-2.5 h-2.5" /> Must Change
                             </span>
                           )}
                         </div>
@@ -304,6 +375,16 @@ export default function Users() {
                               <button onClick={() => openEdit(u)} className="p-1.5 hover:bg-muted rounded text-muted-foreground" title="Edit user">
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
+                              {canReset && (
+                                <button
+                                  onClick={() => handleResetPassword(u)}
+                                  disabled={resettingId === u.id}
+                                  className="p-1.5 hover:bg-amber-100 text-amber-600 rounded disabled:opacity-50"
+                                  title={`Reset password to ${ROLE_DEFAULT_PASSWORDS[u.role] ?? "default"}`}
+                                >
+                                  <RotateCcw className={cn("w-3.5 h-3.5", resettingId === u.id && "animate-spin")} />
+                                </button>
+                              )}
                               {canDelete && (
                                 <button
                                   onClick={async () => {

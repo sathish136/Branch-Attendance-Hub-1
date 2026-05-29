@@ -366,7 +366,7 @@ function DevicesTab() {
                     <div className="flex flex-col items-center gap-2">
                       <Search className="w-7 h-7 text-muted-foreground/40" />
                       <p>No devices match your search.</p>
-                      <button onClick={() => { setSearch(""); setFilterBranchId(""); }} className="text-xs text-primary underline">Clear filters</button>
+                      <button onClick={() => { setSearch(""); setFilterBranchId(""); setFilterStatus(""); }} className="text-xs text-primary underline">Clear filters</button>
                     </div>
                   </td></tr>
                 ) : null}

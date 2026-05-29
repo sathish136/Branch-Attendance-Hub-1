@@ -150,6 +150,38 @@ router.put("/:id", async (req, res) => {
   } catch (e) { res.status(500).json({ message: "Error", success: false }); }
 });
 
+// Role-based default passwords (must match frontend ROLE_DEFAULT_PASSWORDS)
+const ROLE_DEFAULT_PASSWORDS: Record<string, string> = {
+  super_admin:    "Colombo@555",
+  regional_admin: "Regpo@123",
+  branch_admin:   "Subpo@123",
+  viewer:         "Subpo@123",
+};
+
+router.post("/:id/reset-password", async (req, res) => {
+  try {
+    const requester = await getRequester(req);
+    if (!requester) { res.status(401).json({ message: "Unauthorized", success: false }); return; }
+    if (requester.role !== "super_admin") {
+      res.status(403).json({ message: "Only super admins can reset passwords", success: false }); return;
+    }
+    const targetId = Number(req.params.id);
+    if (targetId === requester.id) {
+      res.status(400).json({ message: "Cannot reset your own password this way", success: false }); return;
+    }
+    const [target] = await db.select().from(systemUsers).where(eq(systemUsers.id, targetId));
+    if (!target) { res.status(404).json({ message: "User not found", success: false }); return; }
+
+    const defaultPwd = ROLE_DEFAULT_PASSWORDS[target.role] ?? "Subpo@123";
+    await db.update(systemUsers).set({
+      passwordHash: hashPassword(defaultPwd),
+      mustChangePassword: true,
+    }).where(eq(systemUsers.id, targetId));
+
+    res.json({ success: true, message: `Password reset to role default. User must change it on next login.` });
+  } catch (e) { console.error(e); res.status(500).json({ message: "Error", success: false }); }
+});
+
 router.delete("/:id", async (req, res) => {
   try {
     const requester = await getRequester(req);
