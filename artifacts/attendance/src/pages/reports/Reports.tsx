@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useGetAttendanceReport, useGetMonthlyReport, useGetOvertimeReport, useListBranches } from "@workspace/api-client-react";
+import { useGetAttendanceReport, useGetMonthlyReport, useGetOvertimeReport, useListBranches, useListEmployees } from "@workspace/api-client-react";
 import { PageHeader, Card, Input, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Users, Clock, Calendar, AlignLeft, FileText, Sheet } from "lucide-react";
@@ -259,12 +259,20 @@ function AttendanceReport() {
   const [endDate, setEndDate] = useState(now.toISOString().split("T")[0]);
   const [branchId, setBranchId] = useState("");
   const [status, setStatus] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
   const { data: branches } = useListBranches();
+  const { data: empData } = useListEmployees({ limit: 1000 });
+  const allEmployees = empData?.employees || [];
   const { data, isLoading } = useGetAttendanceReport({
     startDate, endDate,
-    ...(branchId ? { branchId: Number(branchId) } : {}),
-    ...(status   ? { status }                     : {}),
+    ...(branchId    ? { branchId: Number(branchId) }    : {}),
+    ...(status      ? { status }                         : {}),
+    ...(employeeId  ? { employeeId: Number(employeeId) } : {}),
   });
+
+  const sortedRecords = [...(data?.records || [])].sort((a: any, b: any) =>
+    a.date.localeCompare(b.date) || (a.employeeName || "").localeCompare(b.employeeName || "")
+  );
 
   return (
     <div className="space-y-4">
@@ -274,9 +282,20 @@ function AttendanceReport() {
           <div><Label className="text-xs">End Date</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
           <div>
             <Label className="text-xs">Branch</Label>
-            <Select value={branchId} onChange={e => setBranchId(e.target.value)}>
+            <Select value={branchId} onChange={e => { setBranchId(e.target.value); setEmployeeId(""); }}>
               <option value="">All Branches</option>
               {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Employee</Label>
+            <Select value={employeeId} onChange={e => setEmployeeId(e.target.value)}>
+              <option value="">All Employees</option>
+              {(branchId
+                ? allEmployees.filter((e: any) => String(e.branchId) === branchId)
+                : allEmployees
+              ).sort((a: any, b: any) => (a.fullName || "").localeCompare(b.fullName || ""))
+               .map((e: any) => <option key={e.id} value={e.id}>{e.fullName || e.firstName} ({e.employeeId})</option>)}
             </Select>
           </div>
           <div>
@@ -291,10 +310,10 @@ function AttendanceReport() {
             </Select>
           </div>
           <ExportButtons
-            disabled={!data?.records?.length}
+            disabled={!sortedRecords.length}
             filename={`Attendance-Report-${startDate}-to-${endDate}`}
             getHeaders={() => ["Date","Emp ID","Employee","Branch","Status","In Time","Out Time","Total Hrs","OT Hrs"]}
-            getRows={() => (data?.records || []).map((r: any) => [
+            getRows={() => sortedRecords.map((r: any) => [
               r.date, r.employeeCode, r.employeeName, r.branchName,
               r.status, r.inTime1 ? fmt(r.inTime1) : "", r.outTime1 ? fmt(r.outTime1) : "",
               r.totalHours != null ? r.totalHours.toFixed(2) : "",
@@ -332,7 +351,7 @@ function AttendanceReport() {
                 ))}</tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {(data?.records || []).slice(0, 200).map(r => (
+                {sortedRecords.slice(0, 200).map((r: any) => (
                   <tr key={r.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-3 py-2 font-mono whitespace-nowrap">{r.date}</td>
                     <td className="px-3 py-2 font-mono text-muted-foreground">{r.employeeCode}</td>
@@ -350,7 +369,7 @@ function AttendanceReport() {
                     <td className="px-3 py-2 font-mono">{r.overtimeHours != null && r.overtimeHours > 0 ? fmtDuration(r.overtimeHours) : "—"}</td>
                   </tr>
                 ))}
-                {!data?.records?.length && (
+                {!sortedRecords.length && (
                   <tr><td colSpan={10} className="text-center py-8 text-muted-foreground">No records found for the selected filters.</td></tr>
                 )}
               </tbody>
@@ -368,11 +387,18 @@ function MonthlyReport() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [branchId, setBranchId] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
   const { data: branches } = useListBranches();
+  const { data: empData } = useListEmployees({ limit: 1000 });
+  const allEmployees = empData?.employees || [];
   const { data, isLoading } = useGetMonthlyReport({
     month, year,
     ...(branchId ? { branchId: Number(branchId) } : {}),
   });
+
+  const filteredEmps = (data?.employees || []).filter((e: any) =>
+    !employeeId || String(e.employeeId) === String(employeeId)
+  ).sort((a: any, b: any) => (a.employeeName || "").localeCompare(b.employeeName || ""));
 
   return (
     <div className="space-y-4">
@@ -392,16 +418,27 @@ function MonthlyReport() {
           </div>
           <div>
             <Label className="text-xs">Branch</Label>
-            <Select value={branchId} onChange={e => setBranchId(e.target.value)}>
+            <Select value={branchId} onChange={e => { setBranchId(e.target.value); setEmployeeId(""); }}>
               <option value="">All Branches</option>
               {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
+          <div>
+            <Label className="text-xs">Employee</Label>
+            <Select value={employeeId} onChange={e => setEmployeeId(e.target.value)}>
+              <option value="">All Employees</option>
+              {(branchId
+                ? allEmployees.filter((e: any) => String(e.branchId) === branchId)
+                : allEmployees
+              ).sort((a: any, b: any) => (a.fullName || "").localeCompare(b.fullName || ""))
+               .map((e: any) => <option key={e.id} value={e.employeeId}>{e.fullName || e.firstName} ({e.employeeId})</option>)}
+            </Select>
+          </div>
           <ExportButtons
-            disabled={!data?.employees?.length}
+            disabled={!filteredEmps.length}
             filename={`Monthly-Report-${getMonthName(month)}-${year}`}
             getHeaders={() => ["Emp ID","Employee","Branch","Designation","Present","Absent","Late","Half Day","Leave","Holiday","Work Hours","OT Hours","Att %"]}
-            getRows={() => (data?.employees || []).map((e: any) => [
+            getRows={() => filteredEmps.map((e: any) => [
               e.employeeCode, e.employeeName, e.branchName, e.designation,
               e.presentDays, e.absentDays, e.lateDays, e.halfDays, e.leaveDays, e.holidayDays,
               e.totalWorkHours.toFixed(2), e.overtimeHours.toFixed(2), `${e.attendancePercentage}%`,
@@ -413,7 +450,7 @@ function MonthlyReport() {
       {data && (
         <Card className="p-3 flex gap-6 text-sm border-green-200 bg-green-50/30">
           <div><span className="text-muted-foreground">Period: </span><strong>{getMonthName(data.month)} {data.year}</strong></div>
-          <div><span className="text-muted-foreground">Total Employees: </span><strong>{data.totalEmployees}</strong></div>
+          <div><span className="text-muted-foreground">Total Employees: </span><strong>{filteredEmps.length}</strong></div>
           <div><span className="text-muted-foreground">Working Days: </span><strong>{data.workingDays}</strong></div>
         </Card>
       )}
@@ -428,7 +465,7 @@ function MonthlyReport() {
                 ))}</tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {(data?.employees || []).map(e => (
+                {filteredEmps.map((e: any) => (
                   <tr key={e.employeeId} className="hover:bg-muted/30 transition-colors">
                     <td className="px-3 py-2 font-mono text-muted-foreground">{e.employeeCode}</td>
                     <td className="px-3 py-2 font-medium whitespace-nowrap">{e.employeeName}</td>
@@ -450,7 +487,7 @@ function MonthlyReport() {
                     </td>
                   </tr>
                 ))}
-                {!data?.employees?.length && (
+                {!filteredEmps.length && (
                   <tr><td colSpan={13} className="text-center py-8 text-muted-foreground">No records found for the selected period.</td></tr>
                 )}
               </tbody>
@@ -468,11 +505,18 @@ function OvertimeReport() {
   const [startDate, setStartDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(now.toISOString().split("T")[0]);
   const [branchId, setBranchId] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
   const { data: branches } = useListBranches();
+  const { data: empData } = useListEmployees({ limit: 1000 });
+  const allEmployees = empData?.employees || [];
   const { data, isLoading } = useGetOvertimeReport({
     startDate, endDate,
     ...(branchId ? { branchId: Number(branchId) } : {}),
   });
+
+  const filteredOT = (data?.employees || []).filter((e: any) =>
+    !employeeId || String(e.employeeId) === String(employeeId)
+  ).sort((a: any, b: any) => (a.employeeName || "").localeCompare(b.employeeName || ""));
 
   return (
     <div className="space-y-4">
@@ -482,16 +526,27 @@ function OvertimeReport() {
           <div><Label className="text-xs">End Date</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
           <div>
             <Label className="text-xs">Branch</Label>
-            <Select value={branchId} onChange={e => setBranchId(e.target.value)}>
+            <Select value={branchId} onChange={e => { setBranchId(e.target.value); setEmployeeId(""); }}>
               <option value="">All Branches</option>
               {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
+          <div>
+            <Label className="text-xs">Employee</Label>
+            <Select value={employeeId} onChange={e => setEmployeeId(e.target.value)}>
+              <option value="">All Employees</option>
+              {(branchId
+                ? allEmployees.filter((e: any) => String(e.branchId) === branchId)
+                : allEmployees
+              ).sort((a: any, b: any) => (a.fullName || "").localeCompare(b.fullName || ""))
+               .map((e: any) => <option key={e.id} value={e.employeeId}>{e.fullName || e.firstName} ({e.employeeId})</option>)}
+            </Select>
+          </div>
           <ExportButtons
-            disabled={!data?.employees?.length}
+            disabled={!filteredOT.length}
             filename={`Overtime-Report-${startDate}-to-${endDate}`}
             getHeaders={() => ["Emp ID","Employee","Branch","Designation","OT Days","Total OT Hours"]}
-            getRows={() => (data?.employees || []).map((e: any) => [
+            getRows={() => filteredOT.map((e: any) => [
               e.employeeCode, e.employeeName, e.branchName, e.designation,
               e.overtimeDays, e.totalOvertimeHours.toFixed(2),
             ])}
@@ -501,8 +556,8 @@ function OvertimeReport() {
 
       {data && (
         <Card className="p-3 flex gap-6 text-sm border-amber-200 bg-amber-50/30">
-          <div><span className="text-muted-foreground">Total OT Hours: </span><strong className="text-amber-700">{fmtDuration(data.totalOvertimeHours)}</strong></div>
-          <div><span className="text-muted-foreground">Employees with OT: </span><strong>{data.employees.length}</strong></div>
+          <div><span className="text-muted-foreground">Total OT Hours: </span><strong className="text-amber-700">{fmtDuration(filteredOT.reduce((s: number, e: any) => s + e.totalOvertimeHours, 0))}</strong></div>
+          <div><span className="text-muted-foreground">Employees with OT: </span><strong>{filteredOT.length}</strong></div>
         </Card>
       )}
 
@@ -516,7 +571,7 @@ function OvertimeReport() {
                 ))}</tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {(data?.employees || []).map(e => (
+                {filteredOT.map((e: any) => (
                   <tr key={e.employeeId} className="hover:bg-muted/30 transition-colors">
                     <td className="px-3 py-2 font-mono text-muted-foreground">{e.employeeCode}</td>
                     <td className="px-3 py-2 font-medium whitespace-nowrap">{e.employeeName}</td>
@@ -525,12 +580,12 @@ function OvertimeReport() {
                     <td className="px-3 py-2 text-center font-semibold text-amber-600">{e.overtimeDays}</td>
                     <td className="px-3 py-2 text-center font-bold text-amber-700">{fmtDuration(e.totalOvertimeHours)}</td>
                     <td className="px-3 py-2 text-muted-foreground">
-                      {e.records.slice(0,3).map(r => `${r.date}: ${fmtDuration(r.overtimeHours)}`).join(" | ")}
+                      {e.records.slice(0,3).map((r: any) => `${r.date}: ${fmtDuration(r.overtimeHours)}`).join(" | ")}
                       {e.records.length > 3 && ` +${e.records.length-3} more`}
                     </td>
                   </tr>
                 ))}
-                {!data?.employees?.length && (
+                {!filteredOT.length && (
                   <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">No overtime records found for this period.</td></tr>
                 )}
               </tbody>
@@ -653,7 +708,17 @@ function SplitReport() {
   const now = new Date();
   const [startDate, setStartDate] = useState(now.toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(now.toISOString().split("T")[0]);
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const { data: empData } = useListEmployees({ limit: 1000 });
+  const allEmployees = empData?.employees || [];
   const { rows, loading } = useSplitReport(startDate, endDate);
+
+  const filteredRows = employeeSearch
+    ? rows.filter(r =>
+        r.employeeName.toLowerCase().includes(employeeSearch.toLowerCase()) ||
+        r.biometricId.includes(employeeSearch)
+      )
+    : rows;
 
   return (
     <div className="space-y-4">
@@ -661,11 +726,20 @@ function SplitReport() {
         <div className="flex flex-wrap items-end gap-3">
           <div><Label className="text-xs">Start Date</Label><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
           <div><Label className="text-xs">End Date</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
+          <div>
+            <Label className="text-xs">Employee</Label>
+            <Select value={employeeSearch} onChange={e => setEmployeeSearch(e.target.value)}>
+              <option value="">All Employees</option>
+              {allEmployees
+                .sort((a: any, b: any) => (a.fullName || "").localeCompare(b.fullName || ""))
+                .map((e: any) => <option key={e.id} value={e.fullName || e.firstName}>{e.fullName || e.firstName} ({e.employeeId})</option>)}
+            </Select>
+          </div>
           <ExportButtons
-            disabled={!rows.length}
+            disabled={!filteredRows.length}
             filename={`Split-Report-${startDate}-to-${endDate}`}
             getHeaders={() => ["Date","Bio ID","Employee","1st In","1st Out","Last In","Last Out","Total Hrs"]}
-            getRows={() => rows.map(r => [
+            getRows={() => filteredRows.map(r => [
               r.date,
               r.biometricId,
               r.employeeName,
@@ -679,9 +753,9 @@ function SplitReport() {
         </div>
       </Card>
 
-      {rows.length > 0 && (
+      {filteredRows.length > 0 && (
         <Card className="p-3 flex gap-6 text-sm border-blue-200 bg-blue-50/30">
-          <div><span className="text-muted-foreground">Records: </span><strong>{rows.length}</strong></div>
+          <div><span className="text-muted-foreground">Records: </span><strong>{filteredRows.length}</strong></div>
         </Card>
       )}
 
@@ -706,7 +780,7 @@ function SplitReport() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {rows.map((r, idx) => (
+                {filteredRows.map((r, idx) => (
                   <tr key={r.key} className={cn("hover:bg-muted/30 transition-colors", idx % 2 === 1 && "bg-blue-50/30")}>
                     <td className="px-3 py-2 font-mono whitespace-nowrap text-muted-foreground">{r.date}</td>
                     <td className="px-3 py-2 font-mono text-muted-foreground">{r.biometricId}</td>
@@ -720,7 +794,7 @@ function SplitReport() {
                     </td>
                   </tr>
                 ))}
-                {!rows.length && !loading && (
+                {!filteredRows.length && !loading && (
                   <tr>
                     <td colSpan={8} className="text-center py-10 text-muted-foreground">
                       No punch records found for the selected date range.

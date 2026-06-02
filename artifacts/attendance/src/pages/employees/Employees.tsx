@@ -1291,14 +1291,18 @@ export default function Employees() {
     } else if (regionalBranchIds) {
       list = list.filter((e: any) => regionalBranchIds.has(e.branchId));
     }
-    if (!search) return list;
-    const s = search.toLowerCase();
-    return list.filter((e: any) =>
-      empDisplayName(e).toLowerCase().includes(s) ||
-      e.employeeId.toLowerCase().includes(s) ||
-      (e.nicNumber || "").replace(/\s/g,"").includes(s.replace(/\s/g,"")) ||
-      (e.passportNumber || "").toLowerCase().includes(s) ||
-      (e.email || "").toLowerCase().includes(s)
+    if (search) {
+      const s = search.toLowerCase();
+      list = list.filter((e: any) =>
+        empDisplayName(e).toLowerCase().includes(s) ||
+        e.employeeId.toLowerCase().includes(s) ||
+        (e.nicNumber || "").replace(/\s/g,"").includes(s.replace(/\s/g,"")) ||
+        (e.passportNumber || "").toLowerCase().includes(s) ||
+        (e.email || "").toLowerCase().includes(s)
+      );
+    }
+    return [...list].sort((a: any, b: any) =>
+      empDisplayName(a).localeCompare(empDisplayName(b))
     );
   }, [allEmployees, search, filterBranchId, regionalBranchIds]);
 
