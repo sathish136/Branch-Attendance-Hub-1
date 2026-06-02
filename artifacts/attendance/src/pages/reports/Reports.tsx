@@ -1,14 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useGetAttendanceReport, useGetMonthlyReport, useGetOvertimeReport, useListBranches, useListEmployees } from "@workspace/api-client-react";
 import { PageHeader, Card, Input, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { Users, Clock, Calendar, AlignLeft, FileText, Sheet } from "lucide-react";
+import { Users, Clock, Calendar, AlignLeft, FileText, Sheet, X, ChevronDown, UserSquare } from "lucide-react";
 import { authFetch } from "@/lib/authFetch";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function apiUrl(path: string) { return `${BASE}/api${path}`; }
 
-type Tab = "attendance" | "monthly" | "overtime" | "split";
+type Tab = "attendance" | "monthly" | "overtime" | "split" | "individual";
 
 const STATUS_COLORS: Record<string, string> = {
   present: "bg-green-100 text-green-700",
@@ -215,6 +215,88 @@ function ExportButtons({
   );
 }
 
+/* ── Searchable Employee Combobox ── */
+function EmpCombo({
+  value, onChange, employees, placeholder = "All Employees",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  employees: any[];
+  placeholder?: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const sorted = [...employees].sort((a: any, b: any) => (a.fullName || "").localeCompare(b.fullName || ""));
+  const selected = sorted.find((e: any) => String(e.id) === value);
+
+  const filtered = sorted.filter((e: any) => {
+    const q = query.toLowerCase();
+    return (
+      (e.fullName || "").toLowerCase().includes(q) ||
+      (e.firstName || "").toLowerCase().includes(q) ||
+      (e.employeeId || "").toLowerCase().includes(q)
+    );
+  });
+
+  useEffect(() => {
+    function handle(ev: MouseEvent) {
+      if (ref.current && !ref.current.contains(ev.target as Node)) {
+        setOpen(false); setQuery("");
+      }
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  const displayVal = open ? query : (selected ? `${selected.fullName || selected.firstName} (${selected.employeeId})` : "");
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="relative">
+        <input
+          className="h-9 w-56 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring pr-7"
+          placeholder={!value ? placeholder : ""}
+          value={displayVal}
+          onFocus={() => { setOpen(true); setQuery(""); }}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        />
+        {value ? (
+          <button onClick={() => { onChange(""); setQuery(""); setOpen(false); }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        )}
+      </div>
+      {open && (
+        <div className="absolute z-50 top-full left-0 mt-1 w-72 bg-popover border border-border rounded-lg shadow-xl overflow-hidden">
+          <div className="max-h-56 overflow-y-auto">
+            <button onClick={() => { onChange(""); setQuery(""); setOpen(false); }}
+              className={cn("w-full text-left px-3 py-2 text-xs hover:bg-muted transition-colors text-muted-foreground", !value && "bg-muted/60 font-medium")}>
+              {placeholder}
+            </button>
+            {filtered.length === 0 && <div className="px-3 py-3 text-xs text-muted-foreground text-center">No employees found</div>}
+            {filtered.map((e: any) => (
+              <button key={e.id}
+                onClick={() => { onChange(String(e.id)); setQuery(""); setOpen(false); }}
+                className={cn(
+                  "w-full text-left px-3 py-2 text-xs hover:bg-muted transition-colors flex items-center justify-between gap-2",
+                  String(e.id) === value && "bg-primary/10 text-primary font-semibold"
+                )}>
+                <span className="truncate">{e.fullName || e.firstName}</span>
+                <span className="font-mono text-muted-foreground text-[10px] shrink-0">{e.employeeId}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Reports() {
   const [tab, setTab] = useState<Tab>("attendance");
 
@@ -223,10 +305,11 @@ export default function Reports() {
       <PageHeader title="Reports" description="Detailed attendance, monthly, overtime, and split punch reports." />
       <div className="flex gap-1 border-b border-border overflow-x-auto">
         {([
-          { id: "attendance", label: "Attendance Report", icon: Users },
-          { id: "monthly",    label: "Monthly Report",    icon: Calendar },
-          { id: "overtime",   label: "Overtime Report",   icon: Clock },
-          { id: "split",      label: "Split Report",      icon: AlignLeft },
+          { id: "attendance", label: "Attendance Report",   icon: Users },
+          { id: "monthly",    label: "Monthly Report",      icon: Calendar },
+          { id: "overtime",   label: "Overtime Report",     icon: Clock },
+          { id: "split",      label: "Split Report",        icon: AlignLeft },
+          { id: "individual", label: "Individual Sheet",    icon: UserSquare },
         ] as const).map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -248,6 +331,7 @@ export default function Reports() {
       {tab === "monthly"    && <MonthlyReport />}
       {tab === "overtime"   && <OvertimeReport />}
       {tab === "split"      && <SplitReport />}
+      {tab === "individual" && <IndividualSheet />}
     </div>
   );
 }
@@ -289,14 +373,11 @@ function AttendanceReport() {
           </div>
           <div>
             <Label className="text-xs">Employee</Label>
-            <Select value={employeeId} onChange={e => setEmployeeId(e.target.value)}>
-              <option value="">All Employees</option>
-              {(branchId
-                ? allEmployees.filter((e: any) => String(e.branchId) === branchId)
-                : allEmployees
-              ).sort((a: any, b: any) => (a.fullName || "").localeCompare(b.fullName || ""))
-               .map((e: any) => <option key={e.id} value={e.id}>{e.fullName || e.firstName} ({e.employeeId})</option>)}
-            </Select>
+            <EmpCombo
+              value={employeeId}
+              onChange={setEmployeeId}
+              employees={branchId ? allEmployees.filter((e: any) => String(e.branchId) === branchId) : allEmployees}
+            />
           </div>
           <div>
             <Label className="text-xs">Status</Label>
@@ -425,14 +506,11 @@ function MonthlyReport() {
           </div>
           <div>
             <Label className="text-xs">Employee</Label>
-            <Select value={employeeId} onChange={e => setEmployeeId(e.target.value)}>
-              <option value="">All Employees</option>
-              {(branchId
-                ? allEmployees.filter((e: any) => String(e.branchId) === branchId)
-                : allEmployees
-              ).sort((a: any, b: any) => (a.fullName || "").localeCompare(b.fullName || ""))
-               .map((e: any) => <option key={e.id} value={e.employeeId}>{e.fullName || e.firstName} ({e.employeeId})</option>)}
-            </Select>
+            <EmpCombo
+              value={employeeId}
+              onChange={setEmployeeId}
+              employees={branchId ? allEmployees.filter((e: any) => String(e.branchId) === branchId) : allEmployees}
+            />
           </div>
           <ExportButtons
             disabled={!filteredEmps.length}
@@ -533,14 +611,11 @@ function OvertimeReport() {
           </div>
           <div>
             <Label className="text-xs">Employee</Label>
-            <Select value={employeeId} onChange={e => setEmployeeId(e.target.value)}>
-              <option value="">All Employees</option>
-              {(branchId
-                ? allEmployees.filter((e: any) => String(e.branchId) === branchId)
-                : allEmployees
-              ).sort((a: any, b: any) => (a.fullName || "").localeCompare(b.fullName || ""))
-               .map((e: any) => <option key={e.id} value={e.employeeId}>{e.fullName || e.firstName} ({e.employeeId})</option>)}
-            </Select>
+            <EmpCombo
+              value={employeeId}
+              onChange={setEmployeeId}
+              employees={branchId ? allEmployees.filter((e: any) => String(e.branchId) === branchId) : allEmployees}
+            />
           </div>
           <ExportButtons
             disabled={!filteredOT.length}
@@ -708,16 +783,17 @@ function SplitReport() {
   const now = new Date();
   const [startDate, setStartDate] = useState(now.toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(now.toISOString().split("T")[0]);
-  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
   const { data: empData } = useListEmployees({ limit: 1000 });
   const allEmployees = empData?.employees || [];
   const { rows, loading } = useSplitReport(startDate, endDate);
 
-  const filteredRows = employeeSearch
-    ? rows.filter(r =>
-        r.employeeName.toLowerCase().includes(employeeSearch.toLowerCase()) ||
-        r.biometricId.includes(employeeSearch)
-      )
+  const selectedBioId = employeeId
+    ? (allEmployees.find((e: any) => String(e.id) === employeeId) as any)?.biometricId || ""
+    : "";
+
+  const filteredRows = selectedBioId
+    ? rows.filter(r => r.biometricId === selectedBioId)
     : rows;
 
   return (
@@ -728,12 +804,7 @@ function SplitReport() {
           <div><Label className="text-xs">End Date</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
           <div>
             <Label className="text-xs">Employee</Label>
-            <Select value={employeeSearch} onChange={e => setEmployeeSearch(e.target.value)}>
-              <option value="">All Employees</option>
-              {allEmployees
-                .sort((a: any, b: any) => (a.fullName || "").localeCompare(b.fullName || ""))
-                .map((e: any) => <option key={e.id} value={e.fullName || e.firstName}>{e.fullName || e.firstName} ({e.employeeId})</option>)}
-            </Select>
+            <EmpCombo value={employeeId} onChange={setEmployeeId} employees={allEmployees} />
           </div>
           <ExportButtons
             disabled={!filteredRows.length}
@@ -802,6 +873,224 @@ function SplitReport() {
                   </tr>
                 )}
               </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/* ── Individual Monthly Sheet ── */
+function IndividualSheet() {
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [branchId, setBranchId] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+
+  const { data: branches } = useListBranches();
+  const { data: empData } = useListEmployees({ limit: 1000 });
+  const allEmployees = empData?.employees || [];
+
+  const selectedEmp = allEmployees.find((e: any) => String(e.id) === employeeId) as any;
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const endDate   = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+  const { data, isLoading } = useGetAttendanceReport({
+    startDate, endDate,
+    ...(employeeId ? { employeeId: Number(employeeId) } : { employeeId: -1 }),
+  });
+
+  const dayRecords = useMemo(() => {
+    const recMap: Record<string, any> = {};
+    for (const r of (data?.records || [])) recMap[r.date] = r;
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const d = i + 1;
+      const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const dayName = new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" });
+      return { day: d, date: dateStr, dayName, rec: recMap[dateStr] ?? null };
+    });
+  }, [data, month, year, daysInMonth]);
+
+  const summary = useMemo(() => {
+    let present = 0, absent = 0, late = 0, halfDay = 0, leave = 0, holiday = 0, totalHrs = 0, otHrs = 0;
+    for (const { rec } of dayRecords) {
+      if (!rec) continue;
+      if (rec.status === "present")  present++;
+      else if (rec.status === "absent")   absent++;
+      else if (rec.status === "late")     { late++; present++; }
+      else if (rec.status === "half_day") halfDay++;
+      else if (rec.status === "leave")    leave++;
+      else if (rec.status === "holiday")  holiday++;
+      totalHrs += rec.totalHours || 0;
+      otHrs    += rec.overtimeHours || 0;
+    }
+    return { present, absent, late, halfDay, leave, holiday, totalHrs, otHrs };
+  }, [dayRecords]);
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <Card className="p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <Label className="text-xs">Month</Label>
+            <Select value={month} onChange={e => setMonth(Number(e.target.value))}>
+              {Array.from({length:12},(_,i)=><option key={i+1} value={i+1}>{getMonthName(i+1)}</option>)}
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Year</Label>
+            <Select value={year} onChange={e => setYear(Number(e.target.value))}>
+              {[2024,2025,2026].map(y=><option key={y} value={y}>{y}</option>)}
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Branch</Label>
+            <Select value={branchId} onChange={e => { setBranchId(e.target.value); setEmployeeId(""); }}>
+              <option value="">All Branches</option>
+              {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Employee <span className="text-red-500">*</span></Label>
+            <EmpCombo
+              value={employeeId}
+              onChange={setEmployeeId}
+              employees={branchId ? allEmployees.filter((e: any) => String(e.branchId) === branchId) : allEmployees}
+              placeholder="Select Employee"
+            />
+          </div>
+          <ExportButtons
+            disabled={!employeeId || !dayRecords.some(r => r.rec)}
+            filename={`Individual-Sheet-${selectedEmp?.employeeId || "emp"}-${getMonthName(month)}-${year}`}
+            getHeaders={() => ["#","Date","Day","In Time","Out Time","Total Hours","OT Hours","Status"]}
+            getRows={() => dayRecords.map(({ day, date, dayName, rec }) => [
+              String(day).padStart(2,"0"), date, dayName,
+              rec?.inTime1  ? fmt(rec.inTime1)  : "",
+              rec?.outTime1 ? fmt(rec.outTime1) : "",
+              rec?.totalHours != null ? fmtDuration(rec.totalHours) : "",
+              rec?.overtimeHours != null && rec.overtimeHours > 0 ? fmtDuration(rec.overtimeHours) : "",
+              rec?.status ? rec.status.replace(/_/g," ") : "",
+            ])}
+          />
+        </div>
+      </Card>
+
+      {/* Employee info banner */}
+      {selectedEmp && (
+        <Card className="p-3 flex flex-wrap gap-4 text-xs border-primary/20 bg-primary/5">
+          <div><span className="text-muted-foreground">Employee: </span><strong>{selectedEmp.fullName || selectedEmp.firstName}</strong></div>
+          <div><span className="text-muted-foreground">ID: </span><strong className="font-mono">{selectedEmp.employeeId}</strong></div>
+          {selectedEmp.branchName && <div><span className="text-muted-foreground">Branch: </span><strong>{selectedEmp.branchName}</strong></div>}
+          {selectedEmp.designation && <div><span className="text-muted-foreground">Designation: </span><strong>{selectedEmp.designation}</strong></div>}
+          <div><span className="text-muted-foreground">Period: </span><strong>{getMonthName(month)} {year} ({daysInMonth} days)</strong></div>
+        </Card>
+      )}
+
+      {/* Summary stats */}
+      {selectedEmp && !isLoading && (
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+          {[
+            { label: "Present",   val: summary.present,   cls: "text-green-600" },
+            { label: "Absent",    val: summary.absent,    cls: "text-red-600" },
+            { label: "Late",      val: summary.late,      cls: "text-amber-600" },
+            { label: "Half Day",  val: summary.halfDay,   cls: "text-yellow-600" },
+            { label: "Leave",     val: summary.leave,     cls: "text-purple-600" },
+            { label: "Holiday",   val: summary.holiday,   cls: "text-gray-600" },
+            { label: "Work Hrs",  val: fmtDuration(summary.totalHrs), cls: "text-blue-600" },
+            { label: "OT Hrs",    val: fmtDuration(summary.otHrs),    cls: "text-orange-600" },
+          ].map(({ label, val, cls }) => (
+            <Card key={label} className="p-2 text-center">
+              <div className={cn("text-sm font-bold", cls)}>{val}</div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">{label}</div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Day-by-day table */}
+      <Card className="overflow-hidden">
+        {!employeeId ? (
+          <div className="p-12 text-center text-muted-foreground">
+            <UserSquare className="w-12 h-12 mx-auto mb-3 opacity-20" />
+            <p className="text-sm font-medium">Select an employee to view their monthly attendance sheet</p>
+            <p className="text-xs mt-1 opacity-60">Use the Employee field above to search by name or ID</p>
+          </div>
+        ) : isLoading ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">Loading attendance data...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-[#16306e] text-white text-xs">
+                  <th className="px-2 py-3 text-center font-semibold w-8">#</th>
+                  <th className="px-3 py-3 text-left font-semibold whitespace-nowrap">Date</th>
+                  <th className="px-3 py-3 text-left font-semibold w-10">Day</th>
+                  <th className="px-3 py-3 text-center font-semibold whitespace-nowrap">In Time</th>
+                  <th className="px-3 py-3 text-center font-semibold whitespace-nowrap">Out Time</th>
+                  <th className="px-3 py-3 text-center font-semibold whitespace-nowrap">Total Hours</th>
+                  <th className="px-3 py-3 text-center font-semibold whitespace-nowrap">OT Hours</th>
+                  <th className="px-3 py-3 text-center font-semibold whitespace-nowrap">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {dayRecords.map(({ day, date, dayName, rec }, idx) => {
+                  const isSun = dayName === "Sun";
+                  const isSat = dayName === "Sat";
+                  return (
+                    <tr key={date} className={cn(
+                      "transition-colors hover:bg-muted/30",
+                      isSun ? "bg-red-50/50" : isSat ? "bg-orange-50/30" : idx % 2 === 1 ? "bg-slate-50/40" : ""
+                    )}>
+                      <td className="px-2 py-2.5 text-center font-mono text-muted-foreground text-[11px]">{String(day).padStart(2,"0")}</td>
+                      <td className="px-3 py-2.5 font-mono whitespace-nowrap text-[11px]">{date}</td>
+                      <td className={cn("px-3 py-2.5 font-bold text-[11px]", isSun ? "text-red-500" : isSat ? "text-orange-500" : "text-muted-foreground")}>{dayName}</td>
+                      <td className="px-3 py-2.5 text-center font-mono">
+                        {rec?.inTime1  ? <span className="text-green-700 font-semibold">{fmt(rec.inTime1)}</span>  : <span className="text-muted-foreground/40">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-center font-mono">
+                        {rec?.outTime1 ? <span className="text-red-600 font-semibold">{fmt(rec.outTime1)}</span> : <span className="text-muted-foreground/40">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-center font-mono text-blue-700">
+                        {rec ? fmtDuration(rec.totalHours) : <span className="text-muted-foreground/40">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-center font-mono text-amber-600">
+                        {rec?.overtimeHours != null && rec.overtimeHours > 0 ? fmtDuration(rec.overtimeHours) : <span className="text-muted-foreground/40">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        {rec ? (
+                          <span className={cn("px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide", STATUS_COLORS[rec.status] || "bg-gray-100 text-gray-600")}>
+                            {rec.status.replace(/_/g," ")}
+                          </span>
+                        ) : (isSun || isSat) ? (
+                          <span className="text-[10px] text-muted-foreground/50 italic">{isSun ? "Sunday" : "Saturday"}</span>
+                        ) : (
+                          <span className="text-muted-foreground/40 text-[10px]">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {/* Footer totals row */}
+              <tfoot>
+                <tr className="bg-[#16306e]/10 border-t-2 border-[#16306e]/20 font-semibold text-xs">
+                  <td colSpan={3} className="px-3 py-2.5 text-muted-foreground font-bold">Month Total</td>
+                  <td colSpan={2} />
+                  <td className="px-3 py-2.5 text-center font-mono text-blue-700 font-bold">{fmtDuration(summary.totalHrs)}</td>
+                  <td className="px-3 py-2.5 text-center font-mono text-amber-600 font-bold">{summary.otHrs > 0 ? fmtDuration(summary.otHrs) : "—"}</td>
+                  <td className="px-3 py-2.5 text-center text-xs text-muted-foreground">
+                    <span className="text-green-600 font-bold">{summary.present}P</span>
+                    {" · "}
+                    <span className="text-red-600 font-bold">{summary.absent}A</span>
+                    {summary.leave > 0 && <><span className="text-muted-foreground"> · </span><span className="text-purple-600 font-bold">{summary.leave}L</span></>}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
