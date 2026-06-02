@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useGetAttendanceReport, useGetMonthlyReport, useGetOvertimeReport, useListBranches, useListEmployees } from "@workspace/api-client-react";
 import { PageHeader, Card, Input, Select, Label } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -226,7 +227,9 @@ function EmpCombo({
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
 
   const sorted = [...employees].sort((a: any, b: any) => (a.fullName || "").localeCompare(b.fullName || ""));
   const selected = sorted.find((e: any) => String(e.id) === value);
@@ -240,9 +243,19 @@ function EmpCombo({
     );
   });
 
+  function openDropdown() {
+    if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
+    setOpen(true);
+    setQuery("");
+  }
+
   useEffect(() => {
     function handle(ev: MouseEvent) {
-      if (ref.current && !ref.current.contains(ev.target as Node)) {
+      const t = ev.target as Node;
+      if (
+        triggerRef.current && !triggerRef.current.contains(t) &&
+        dropRef.current  && !dropRef.current.contains(t)
+      ) {
         setOpen(false); setQuery("");
       }
     }
@@ -253,13 +266,13 @@ function EmpCombo({
   const displayVal = open ? query : (selected ? `${selected.fullName || selected.firstName} (${selected.employeeId})` : "");
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={triggerRef} className="relative">
       <div className="relative">
         <input
           className="h-9 w-56 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring pr-7"
           placeholder={!value ? placeholder : ""}
           value={displayVal}
-          onFocus={() => { setOpen(true); setQuery(""); }}
+          onFocus={openDropdown}
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
         />
         {value ? (
@@ -271,8 +284,12 @@ function EmpCombo({
           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         )}
       </div>
-      {open && (
-        <div className="absolute z-50 top-full left-0 mt-1 w-72 bg-popover border border-border rounded-lg shadow-xl overflow-hidden">
+      {open && rect && createPortal(
+        <div
+          ref={dropRef}
+          style={{ position: "fixed", top: rect.bottom + 4, left: rect.left, width: 288, zIndex: 9999 }}
+          className="bg-popover border border-border rounded-lg shadow-xl overflow-hidden"
+        >
           <div className="max-h-56 overflow-y-auto">
             <button onClick={() => { onChange(""); setQuery(""); setOpen(false); }}
               className={cn("w-full text-left px-3 py-2 text-xs hover:bg-muted transition-colors text-muted-foreground", !value && "bg-muted/60 font-medium")}>
@@ -291,7 +308,8 @@ function EmpCombo({
               </button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
