@@ -288,7 +288,7 @@ function EmpCombo({
         <div
           ref={dropRef}
           style={{ position: "fixed", top: rect.bottom + 4, left: rect.left, width: 288, zIndex: 9999 }}
-          className="bg-popover border border-border rounded-lg shadow-xl overflow-hidden"
+          className="bg-white border border-border rounded-lg shadow-xl overflow-hidden"
         >
           <div className="max-h-56 overflow-y-auto">
             <button onClick={() => { onChange(""); setQuery(""); setOpen(false); }}
