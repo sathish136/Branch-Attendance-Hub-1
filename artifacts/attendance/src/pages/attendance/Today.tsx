@@ -30,7 +30,10 @@ export default function TodayAttendance() {
   const params = branchId !== "all" ? { branchId: Number(branchId) } : undefined;
   const { data, isLoading } = useTodayAttendance(params);
   const { data: branchesRaw } = useBranches();
-  const branches: any[] = useMemo(() => (branchesRaw as any[]) || [], [branchesRaw]);
+  const branches: any[] = useMemo(() =>
+    [...((branchesRaw as any[]) || [])].sort((a, b) =>
+      (a.name || a.branchName || "").localeCompare(b.name || b.branchName || "")
+    ), [branchesRaw]);
 
   const allRecords: any[] = data?.records || [];
   const records = useMemo(() => {
