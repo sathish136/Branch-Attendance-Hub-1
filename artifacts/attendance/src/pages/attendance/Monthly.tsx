@@ -779,66 +779,55 @@ export default function MonthlySheet() {
       ) : rows.length === 0 ? (
         <Card className="p-12 text-center text-sm text-muted-foreground">No attendance records found for this period.</Card>
       ) : view === "grid" ? (
-        /* ── GRID — premium official sheet style ── */
-        <Card className="overflow-hidden shadow-lg border border-slate-200">
+        /* ── GRID — clean light style matching PDF ── */
+        <Card className="overflow-hidden border border-gray-200">
           <div className="w-full overflow-x-auto">
             <table className="text-[11px] border-collapse min-w-max">
               <thead>
-                <tr>
-                  {/* Employee column header */}
-                  <th className="px-4 py-3 bg-[#1a2744] text-white font-semibold border-r border-[#2d3f6b] sticky left-0 z-20 min-w-[190px] text-left tracking-wide">
-                    <span className="text-[10px] uppercase tracking-widest text-blue-200 font-bold">Employee</span>
+                <tr className="bg-gray-700 text-white">
+                  <th className="px-4 py-2.5 text-left font-semibold border border-gray-600 sticky left-0 z-20 min-w-[190px] bg-gray-700">
+                    Employee
                   </th>
-                  {/* Time label column header */}
-                  <th className="px-2 py-3 bg-[#111827] text-slate-400 font-semibold border-r border-slate-700 text-center min-w-[52px] text-[9px] uppercase tracking-widest">
-                    Time
+                  <th className="px-2 py-2.5 text-center font-semibold border border-gray-600 min-w-[52px] text-[10px] bg-gray-800">
                   </th>
-                  {/* Day columns */}
                   {daysArray.map(day => (
                     <th key={day} className={cn(
-                      "px-0.5 py-1.5 font-semibold border-r border-opacity-30 text-center min-w-[48px]",
-                      isSunday(year, month, day)
-                        ? "bg-[#7f1d1d] border-red-900 text-red-200"
-                        : "bg-[#1e3a5f] border-blue-900 text-white",
+                      "px-0.5 py-1.5 font-semibold border border-gray-600 text-center min-w-[50px]",
+                      isSunday(year, month, day) ? "bg-red-800 text-red-100" : "bg-gray-700 text-white",
                     )}>
-                      <div className="font-bold text-[12px] leading-tight">{day}</div>
-                      <div className={cn("text-[9px] font-normal leading-tight mt-0.5",
-                        isSunday(year, month, day) ? "text-red-300/80" : "text-blue-300/80")}>
+                      <div className="font-bold text-[11px] leading-tight">{day}</div>
+                      <div className={cn("text-[9px] font-normal leading-tight",
+                        isSunday(year, month, day) ? "text-red-300" : "text-gray-300")}>
                         {getDayName(year, month, day)}
                       </div>
                     </th>
                   ))}
-                  {/* Summary columns */}
-                  <th className="px-2 py-3 bg-emerald-800 text-emerald-100 font-bold border-l-2 border-emerald-900 text-center min-w-[38px] text-[10px] uppercase tracking-wider">P</th>
-                  <th className="px-2 py-3 bg-rose-800    text-rose-100    font-bold border-l border-rose-900   text-center min-w-[38px] text-[10px] uppercase tracking-wider">A</th>
-                  <th className="px-2 py-3 bg-amber-700   text-amber-100   font-bold border-l border-amber-900  text-center min-w-[38px] text-[10px] uppercase tracking-wider">L</th>
-                  <th className="px-2 py-3 bg-indigo-800  text-indigo-100  font-bold border-l-2 border-indigo-900 text-center min-w-[68px] text-[9px] uppercase tracking-wider">Total Hrs</th>
+                  <th className="px-2 py-2.5 bg-green-600  text-white font-bold border border-gray-600 text-center min-w-[36px] text-[10px]">P</th>
+                  <th className="px-2 py-2.5 bg-red-600    text-white font-bold border border-gray-600 text-center min-w-[36px] text-[10px]">A</th>
+                  <th className="px-2 py-2.5 bg-amber-500  text-white font-bold border border-gray-600 text-center min-w-[36px] text-[10px]">L</th>
+                  <th className="px-2 py-2.5 bg-blue-600   text-white font-bold border border-gray-600 text-center min-w-[68px] text-[10px]">Total Hrs</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row: any, idx: number) => (
                   <React.Fragment key={idx}>
                     {/* ── IN TIME row ── */}
-                    <tr className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
+                    <tr className="bg-white">
                       {/* Employee cell — spans 3 rows */}
                       <td
                         rowSpan={3}
-                        className={cn(
-                          "px-4 py-2 border-b-2 border-b-slate-300 border-r border-slate-200 sticky left-0 z-10 align-middle",
-                          "shadow-[2px_0_8px_-2px_rgba(0,0,0,0.12)]",
-                          idx % 2 === 0 ? "bg-white" : "bg-slate-50",
-                        )}
+                        className="px-3 py-2 bg-white border border-gray-200 sticky left-0 z-10 align-middle shadow-[1px_0_4px_-1px_rgba(0,0,0,0.08)] border-b-2 border-b-gray-300"
                       >
-                        <div className="font-bold text-[#1a2744] text-[12px] truncate max-w-[165px] leading-snug">{row.employeeName}</div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">{row.employeeCode}</div>
+                        <div className="font-bold text-gray-900 text-[12px] truncate max-w-[165px] leading-snug">{row.employeeName}</div>
+                        <div className="text-[10px] text-gray-500 mt-0.5">{row.employeeCode}</div>
                         {row.designation && (
-                          <div className="text-[9px] text-slate-400 italic truncate max-w-[165px] mt-0.5">{row.designation}</div>
+                          <div className="text-[9px] text-gray-400 truncate max-w-[165px] mt-0.5">{row.designation}</div>
                         )}
                       </td>
 
-                      {/* IN label */}
-                      <td className="px-2 py-1 bg-emerald-700 text-white font-bold text-[9px] text-center uppercase tracking-wider border-r border-emerald-800 whitespace-nowrap">
-                        In
+                      {/* IN badge */}
+                      <td className="px-1 py-1 border border-gray-200 text-center align-middle">
+                        <span className="inline-block bg-green-500 text-white font-bold text-[9px] px-2 py-0.5 rounded w-full text-center tracking-wider">IN</span>
                       </td>
                       {/* IN values */}
                       {daysArray.map(day => {
@@ -848,34 +837,33 @@ export default function MonthlySheet() {
                         const sun = isSunday(year, month, day);
                         return (
                           <td key={day} className={cn(
-                            "px-0.5 py-1 text-center border-r border-b border-slate-100 font-mono text-[10px] font-semibold",
-                            sun ? "bg-red-50/60 text-red-300" : inT ? "text-emerald-700" : "text-slate-200",
-                            !sun && inT && "bg-emerald-50/40",
+                            "px-0.5 py-1 text-center border border-gray-200 font-mono text-[10px] font-semibold",
+                            sun ? "bg-red-50 text-red-400" : "bg-white text-gray-800",
                           )}>
-                            {inT || (st === "holiday" ? <span className="text-[9px] text-slate-400 not-italic">H</span> : st === "leave" ? <span className="text-[9px] text-blue-400">LV</span> : "")}
+                            {inT || (st === "holiday" ? <span className="text-[9px] text-gray-400">H</span> : st === "leave" ? <span className="text-[9px] text-blue-500">LV</span> : "")}
                           </td>
                         );
                       })}
 
                       {/* Summary cells — span all 3 rows */}
-                      <td rowSpan={3} className="px-2 py-1 text-center font-bold text-emerald-700 bg-emerald-50 border-l-2 border-emerald-200 border-b-2 border-b-slate-300 align-middle text-[13px]">
+                      <td rowSpan={3} className="px-2 py-1 text-center font-bold text-green-700 bg-white border border-gray-200 border-b-2 border-b-gray-300 align-middle text-[13px]">
                         {row.presentDays ?? 0}
                       </td>
-                      <td rowSpan={3} className="px-2 py-1 text-center font-bold text-rose-600 bg-rose-50 border-l border-rose-200 border-b-2 border-b-slate-300 align-middle text-[13px]">
+                      <td rowSpan={3} className="px-2 py-1 text-center font-bold text-red-600 bg-white border border-gray-200 border-b-2 border-b-gray-300 align-middle text-[13px]">
                         {row.absentDays ?? 0}
                       </td>
-                      <td rowSpan={3} className="px-2 py-1 text-center font-bold text-amber-600 bg-amber-50 border-l border-amber-200 border-b-2 border-b-slate-300 align-middle text-[13px]">
+                      <td rowSpan={3} className="px-2 py-1 text-center font-bold text-amber-600 bg-white border border-gray-200 border-b-2 border-b-gray-300 align-middle text-[13px]">
                         {row.lateDays ?? 0}
                       </td>
-                      <td rowSpan={3} className="px-2 py-1 text-center font-mono font-bold text-indigo-700 bg-indigo-50 border-l-2 border-indigo-200 border-b-2 border-b-slate-300 align-middle text-[11px] whitespace-nowrap">
+                      <td rowSpan={3} className="px-2 py-1 text-center font-mono font-bold text-blue-700 bg-white border border-gray-200 border-b-2 border-b-gray-300 align-middle text-[11px] whitespace-nowrap">
                         {fmtHrs(row.totalWorkHours)}
                       </td>
                     </tr>
 
                     {/* ── OUT TIME row ── */}
-                    <tr className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
-                      <td className="px-2 py-1 bg-rose-700 text-white font-bold text-[9px] text-center uppercase tracking-wider border-r border-rose-800 whitespace-nowrap">
-                        Out
+                    <tr className="bg-white">
+                      <td className="px-1 py-1 border border-gray-200 text-center align-middle">
+                        <span className="inline-block bg-red-500 text-white font-bold text-[9px] px-2 py-0.5 rounded w-full text-center tracking-wider">OUT</span>
                       </td>
                       {daysArray.map(day => {
                         const entry = row.dailyStatus?.find((d: any) => d.day === day);
@@ -883,9 +871,8 @@ export default function MonthlySheet() {
                         const sun  = isSunday(year, month, day);
                         return (
                           <td key={day} className={cn(
-                            "px-0.5 py-1 text-center border-r border-b border-slate-100 font-mono text-[10px] font-semibold",
-                            sun ? "bg-red-50/60 text-red-300" : outT ? "text-rose-700" : "text-slate-200",
-                            !sun && outT && "bg-rose-50/40",
+                            "px-0.5 py-1 text-center border border-gray-200 font-mono text-[10px] font-semibold",
+                            sun ? "bg-red-50 text-red-400" : "bg-white text-gray-800",
                           )}>
                             {outT || ""}
                           </td>
@@ -894,9 +881,9 @@ export default function MonthlySheet() {
                     </tr>
 
                     {/* ── TOTAL HRS row ── */}
-                    <tr className={idx % 2 === 0 ? "bg-white" : "bg-slate-50/60"}>
-                      <td className="px-2 py-1 bg-indigo-700 text-white font-bold text-[9px] text-center uppercase tracking-wider border-r border-indigo-800 whitespace-nowrap border-b-2 border-b-slate-300">
-                        Hrs
+                    <tr className="bg-white">
+                      <td className="px-1 py-1 border border-gray-200 border-b-2 border-b-gray-300 text-center align-middle">
+                        <span className="inline-block bg-blue-600 text-white font-bold text-[9px] px-2 py-0.5 rounded w-full text-center tracking-wider">HRS</span>
                       </td>
                       {daysArray.map(day => {
                         const entry = row.dailyStatus?.find((d: any) => d.day === day);
@@ -906,11 +893,11 @@ export default function MonthlySheet() {
                         const sun = isSunday(year, month, day);
                         return (
                           <td key={day} className={cn(
-                            "px-0.5 py-1 text-center border-r border-b-2 border-b-slate-300 border-slate-100 font-mono text-[10px]",
-                            sun ? "bg-red-50/60" : hrs != null && hrs > 0 ? "bg-indigo-50/40" : "",
+                            "px-0.5 py-1 text-center border border-gray-200 border-b-2 border-b-gray-300 font-mono text-[10px]",
+                            sun ? "bg-red-50" : "bg-white",
                           )}>
                             {hrs != null && hrs > 0 ? (
-                              <span className="font-bold text-indigo-700">{fmtHrs(hrs)}</span>
+                              <span className="font-bold text-blue-700">{fmtHrs(hrs)}</span>
                             ) : st !== "absent" && !sun ? (
                               <span className={cn("font-bold text-[9px]", cfg.text)}>{cfg.abbr}</span>
                             ) : ""}
