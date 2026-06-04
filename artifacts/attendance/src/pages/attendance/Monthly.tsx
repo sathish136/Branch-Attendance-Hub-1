@@ -180,7 +180,7 @@ async function exportGridPdf(
   const empW   = 32;  // employee name column
   const timeW  = 8;   // In/Out/Hrs label
   const sumW   = 9;   // P / A / L / TotalHrs
-  const nSumCols = 4;
+  const nSumCols = 3;
   const dayW   = Math.max(5.8, (contentW - empW - timeW - sumW * nSumCols) / daysArray.length);
 
   // Column index helpers
@@ -189,8 +189,7 @@ async function exportGridPdf(
   const COL_DAY0  = 2;                         // first day column
   const COL_P     = COL_DAY0 + daysArray.length;
   const COL_A     = COL_P + 1;
-  const COL_L     = COL_A + 1;
-  const COL_TOTAL = COL_L + 1;
+  const COL_TOTAL = COL_A + 1;
 
   // ── Page header (drawn once; autoTable repeats head on every page) ───────────
   async function drawPageHeader(): Promise<number> {
@@ -241,9 +240,8 @@ async function exportGridPdf(
       const empCell  = sub === 0 ? `${row.employeeName}\n${row.employeeCode}${row.designation ? `\n${row.designation}` : ""}` : "";
       const pCell    = sub === 0 ? String(row.presentDays ?? 0) : "";
       const aCell    = sub === 0 ? String(row.absentDays  ?? 0) : "";
-      const lCell    = sub === 0 ? String(row.lateDays    ?? 0) : "";
       const totalCell = sub === 0 ? fmtHrs(row.totalWorkHours) : "";
-      bodyData.push([empCell, subLabels[sub], ...dayVals, pCell, aCell, lCell, totalCell]);
+      bodyData.push([empCell, subLabels[sub], ...dayVals, pCell, aCell, totalCell]);
       bodyMeta.push({ empIdx, sub });
     });
   });
@@ -254,7 +252,6 @@ async function exportGridPdf(
     [COL_TIME]: { cellWidth: timeW, halign: "center", fontStyle: "normal", fontSize: 6,   textColor: [80, 80, 100]  },
     [COL_P]:    { cellWidth: sumW,  halign: "center", fontStyle: "bold",   fontSize: 7,   textColor: [21, 128, 61]  },
     [COL_A]:    { cellWidth: sumW,  halign: "center", fontStyle: "bold",   fontSize: 7,   textColor: [185, 28, 28]  },
-    [COL_L]:    { cellWidth: sumW,  halign: "center", fontStyle: "bold",   fontSize: 7,   textColor: [146, 64, 14]  },
     [COL_TOTAL]:{ cellWidth: sumW,  halign: "center", fontStyle: "bold",   fontSize: 6.5, textColor: [29, 78, 216]  },
   };
   daysArray.forEach((_, i) => {
@@ -270,7 +267,7 @@ async function exportGridPdf(
   const headRow = [
     "Employee", "Time",
     ...daysArray.map(d => `${String(d).padStart(2,"0")}\n${getDayName(year, month, d)}`),
-    "P", "A", "L", "Total\nHrs",
+    "P", "A", "Total\nHrs",
   ];
 
   const startY = await drawPageHeader();
@@ -356,7 +353,6 @@ async function exportGridPdf(
       if (data.column.index >= COL_P) {
         const bgColor = data.column.index === COL_P ? [235, 252, 240]
           : data.column.index === COL_A ? [255, 242, 242]
-          : data.column.index === COL_L ? [255, 249, 235]
           : [235, 244, 255];
         data.cell.styles.fillColor = bgColor;
         if (!isFirstSub) data.cell.styles.lineWidth = { top: 0, left: 0.2, bottom: isLastSub ? 0.2 : 0, right: 0.2 };
