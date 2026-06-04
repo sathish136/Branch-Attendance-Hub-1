@@ -158,6 +158,7 @@ async function exportGridPdf(
   monthName: string,
   filename: string,
   _showTimes: boolean,
+  branchLabel: string,
 ) {
   const { default: jsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
@@ -207,6 +208,8 @@ async function exportGridPdf(
     doc.text("Human Resources Department", pageW / 2, textY + 7.5, { align: "center" });
     doc.setFont("helvetica", "bold");   doc.setFontSize(7.5); doc.setTextColor(139, 0, 0);
     doc.text("MONTHLY ATTENDANCE SHEET", pageW / 2, textY + 11.5, { align: "center" });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(30, 58, 138);
+    doc.text(`Branch: ${branchLabel}`, pageW / 2, textY + 15.5, { align: "center" });
     doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(80, 80, 100);
     doc.text(periodStr, pageW - margin, 6, { align: "right" });
     const ruleY = textY + 14;
@@ -415,9 +418,10 @@ async function exportTablePdf(
   monthName: string,
   year: number,
   filename: string,
+  branchLabel: string,
 ) {
   const { default: autoTable } = await import("jspdf-autotable");
-  const { doc, pageW, pageH, headerH, liveUData } = await buildPdfBase("landscape", `Timing Detail — ${monthName} ${year}`, filename);
+  const { doc, pageW, pageH, headerH, liveUData } = await buildPdfBase("landscape", `Timing Detail — ${branchLabel} — ${monthName} ${year}`, filename);
 
   const margin = 10;
 
@@ -537,7 +541,7 @@ function xlAlign(h: "left"|"center"|"right" = "center", wrap = false) {
 }
 
 // ── Grid Excel — matches Grid PDF: per-employee multi-row blocks ──────────────
-async function exportGridExcel(rows: any[], daysArray: number[], year: number, month: number, monthName: string, filename: string) {
+async function exportGridExcel(rows: any[], daysArray: number[], year: number, month: number, monthName: string, filename: string, branchLabel: string) {
   const { Workbook } = await import("exceljs");
   const wb = new Workbook();
   wb.creator = "Sri Lanka Post";
@@ -573,6 +577,7 @@ async function exportGridExcel(rows: any[], daysArray: number[], year: number, m
     addMergedTitle("SRI LANKA POST",              "FF16306E", true,  13, "FFFFFFFF");
     addMergedTitle("Human Resources Department",  "FF505064", false,  8, "FFFFFFFF");
     addMergedTitle("MONTHLY ATTENDANCE SHEET",    "FF8B0000", true,   9, "FFFFFFFF");
+    addMergedTitle(`Branch: ${branchLabel}`,      "FF1E3A8A", false,  8, "FFFFFFFF");
     addMergedTitle(periodStr,                     "FF505064", false,  7, "FFFFFFFF");
     ws.addRow([]);
 
@@ -692,7 +697,7 @@ async function exportGridExcel(rows: any[], daysArray: number[], year: number, m
 }
 
 // ── Table Excel — matches Table PDF: flat timing list ─────────────────────────
-async function exportTableExcel(filteredTableRows: any[], monthName: string, year: number, filename: string) {
+async function exportTableExcel(filteredTableRows: any[], monthName: string, year: number, filename: string, branchLabel: string) {
   const { Workbook } = await import("exceljs");
   const wb = new Workbook();
   wb.creator = "Sri Lanka Post";
@@ -720,6 +725,7 @@ async function exportTableExcel(filteredTableRows: any[], monthName: string, yea
   };
   addTitle("SRI LANKA POST — Colombo District", true, 12, "FF16306E");
   addTitle(`Timing Detail — ${monthName} ${year}`, false, 9, "FF505064");
+  addTitle(`Branch: ${branchLabel}`, false, 8, "FF1E3A8A");
   addTitle(`Generated: ${today}`, false, 7.5, "FF888898");
   ws.addRow([]);
 
@@ -890,9 +896,9 @@ export default function MonthlySheet() {
     setExporting(true);
     try {
       if (view === "grid") {
-        await exportGridPdf(rows, daysArray, year, month, monthName, filename, showTimes);
+        await exportGridPdf(rows, daysArray, year, month, monthName, filename, showTimes, branchLabel);
       } else {
-        await exportTablePdf(filteredTableRows, monthName, year, `${filename}-Timing`);
+        await exportTablePdf(filteredTableRows, monthName, year, `${filename}-Timing`, branchLabel);
       }
     } finally { setExporting(false); }
   }
@@ -901,9 +907,9 @@ export default function MonthlySheet() {
     setExporting(true);
     try {
       if (view === "grid") {
-        await exportGridExcel(rows, daysArray, year, month, monthName, filename);
+        await exportGridExcel(rows, daysArray, year, month, monthName, filename, branchLabel);
       } else {
-        await exportTableExcel(filteredTableRows, monthName, year, `${filename}-Timing`);
+        await exportTableExcel(filteredTableRows, monthName, year, `${filename}-Timing`, branchLabel);
       }
     } finally { setExporting(false); }
   }
