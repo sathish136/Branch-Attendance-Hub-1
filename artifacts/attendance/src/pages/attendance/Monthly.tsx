@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Calendar as CalendarIcon, Clock,
   LayoutGrid, List, ChevronUp, ChevronDown,
@@ -785,77 +785,131 @@ export default function MonthlySheet() {
       ) : rows.length === 0 ? (
         <Card className="p-12 text-center text-sm text-muted-foreground">No attendance records found for this period.</Card>
       ) : view === "grid" ? (
-        /* ── GRID ── */
+        /* ── GRID — official sheet style: IN / OUT / TOTAL HRS rows per employee ── */
         <Card className="overflow-hidden">
           <div className="w-full overflow-x-auto">
-            <table className="text-xs border-collapse min-w-max">
+            <table className="text-[11px] border-collapse min-w-max">
               <thead>
                 <tr>
-                  <th className="px-4 py-2.5 bg-slate-700 text-white font-semibold border-b border-slate-600 sticky left-0 z-20 min-w-[220px] text-left">
+                  <th className="px-3 py-2 bg-slate-700 text-white font-semibold border border-slate-600 sticky left-0 z-20 min-w-[180px] text-left">
                     Employee
+                  </th>
+                  <th className="px-2 py-2 bg-slate-800 text-slate-300 font-semibold border border-slate-600 text-center min-w-[64px] text-[10px]">
+                    Time
                   </th>
                   {daysArray.map(day => (
                     <th key={day} className={cn(
-                      "px-1 py-1.5 font-semibold border-b border-slate-600 text-center",
+                      "px-0.5 py-1 font-semibold border border-slate-600 text-center min-w-[46px]",
                       isSunday(year, month, day) ? "bg-red-900/70 text-red-200" : "bg-slate-700 text-white",
-                      showTimes ? "min-w-[72px]" : "min-w-[34px]",
                     )}>
-                      <div className="font-bold leading-tight">{day}</div>
+                      <div className="font-bold leading-tight text-[11px]">{day}</div>
                       <div className={cn("text-[9px] font-normal leading-tight",
-                        isSunday(year, month, day) ? "text-red-300" : "text-slate-300")}>
+                        isSunday(year, month, day) ? "text-red-300" : "text-slate-400")}>
                         {getDayName(year, month, day)}
                       </div>
                     </th>
                   ))}
-                  <th className="px-2 py-2.5 bg-green-700  text-white font-bold border-b border-slate-600 text-center min-w-[36px]">P</th>
-                  <th className="px-2 py-2.5 bg-red-700    text-white font-bold border-b border-slate-600 text-center min-w-[36px]">A</th>
-                  <th className="px-2 py-2.5 bg-amber-600  text-white font-bold border-b border-slate-600 text-center min-w-[36px]">L</th>
-                  <th className="px-3 py-2.5 bg-blue-700   text-white font-bold border-b border-slate-600 text-center min-w-[64px]">Total Hrs</th>
-                  <th className="px-3 py-2.5 bg-orange-600 text-white font-bold border-b border-slate-600 text-center min-w-[56px]">OT Hrs</th>
+                  <th className="px-2 py-2 bg-green-700  text-white font-bold border border-slate-600 text-center min-w-[36px] text-[10px]">P</th>
+                  <th className="px-2 py-2 bg-red-700    text-white font-bold border border-slate-600 text-center min-w-[36px] text-[10px]">A</th>
+                  <th className="px-2 py-2 bg-amber-600  text-white font-bold border border-slate-600 text-center min-w-[36px] text-[10px]">L</th>
+                  <th className="px-2 py-2 bg-blue-700   text-white font-bold border border-slate-600 text-center min-w-[60px] text-[10px]">Total Hrs</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row: any, idx: number) => (
-                  <tr key={idx} className="hover:bg-muted/20 border-b border-border/50 group">
-                    <td className="px-3 py-2 bg-card border-r border-border sticky left-0 z-10 shadow-[1px_0_0_0_hsl(var(--border))] group-hover:bg-muted/10">
-                      <div className="font-semibold text-foreground truncate max-w-[200px]">{row.employeeName}</div>
-                      <div className="text-[10px] text-muted-foreground">{row.employeeCode} · {row.designation}</div>
-                    </td>
-                    {daysArray.map(day => {
-                      const entry = row.dailyStatus?.find((d: any) => d.day === day);
-                      const st  = entry?.status || "absent";
-                      const cfg = STATUS_CFG[st] || STATUS_CFG.absent;
-                      const inT = fmtTime(entry?.inTime);
-                      const outT= fmtTime(entry?.outTime);
-                      const hrs = entry?.hours;
-                      return (
-                        <td key={day} className={cn("px-0.5 py-0.5 text-center align-middle",
-                          isSunday(year, month, day) && "bg-red-50/30")}>
-                          {showTimes ? (
-                            <div className={cn("rounded px-0.5 py-0.5 flex flex-col items-center gap-0", cfg.bg)}>
-                              <span className={cn("text-[10px] font-bold leading-tight", cfg.text)}>{cfg.abbr}</span>
-                              {inT  && <span className="text-[8px] leading-tight text-green-700 font-mono">{inT}</span>}
-                              {outT && <span className="text-[8px] leading-tight text-red-600  font-mono">{outT}</span>}
-                              {hrs != null && <span className="text-[8px] leading-tight font-semibold text-gray-600">{fmtHrs(hrs)}</span>}
-                            </div>
-                          ) : (
-                            <div className={cn("w-7 h-7 mx-auto flex items-center justify-center rounded text-[10px] font-bold", cfg.bg, cfg.text)}>
-                              {cfg.abbr}
-                            </div>
-                          )}
+                {rows.map((row: any, idx: number) => {
+                  const borderTop = idx === 0 ? "" : "border-t-2 border-t-slate-400";
+                  return (
+                    <React.Fragment key={idx}>
+                      {/* Employee name spanning row */}
+                      <tr key={`${idx}-name`} className={cn("group", borderTop)}>
+                        <td
+                          rowSpan={3}
+                          className="px-3 py-1.5 bg-slate-50 border border-slate-200 sticky left-0 z-10 shadow-[1px_0_0_0_rgba(0,0,0,0.08)] align-middle"
+                        >
+                          <div className="font-semibold text-slate-800 truncate max-w-[160px] text-[11px]">{row.employeeName}</div>
+                          <div className="text-[9px] text-slate-500 mt-0.5">{row.employeeCode}</div>
+                          {row.designation && <div className="text-[9px] text-slate-400 italic truncate max-w-[160px]">{row.designation}</div>}
                         </td>
-                      );
-                    })}
-                    <td className="px-2 py-2 text-center font-bold text-green-700 bg-green-50/40">{row.presentDays ?? 0}</td>
-                    <td className="px-2 py-2 text-center font-bold text-red-600   bg-red-50/40"  >{row.absentDays  ?? 0}</td>
-                    <td className="px-2 py-2 text-center font-bold text-amber-600 bg-amber-50/40">{row.lateDays    ?? 0}</td>
-                    <td className="px-3 py-2 text-center font-mono font-semibold text-blue-700   bg-blue-50/30">{fmtHrs(row.totalWorkHours)}</td>
-                    <td className={cn("px-3 py-2 text-center font-mono font-semibold bg-orange-50/30",
-                      row.overtimeHours > 0 ? "text-orange-600" : "text-muted-foreground")}>
-                      {row.overtimeHours > 0 ? fmtHrs(row.overtimeHours) : "—"}
-                    </td>
-                  </tr>
-                ))}
+
+                        {/* IN TIME row */}
+                        <td className="px-1.5 py-1 bg-green-50 border border-slate-200 font-semibold text-green-700 text-[10px] text-right whitespace-nowrap">
+                          In
+                        </td>
+                        {daysArray.map(day => {
+                          const entry = row.dailyStatus?.find((d: any) => d.day === day);
+                          const st  = entry?.status || "absent";
+                          const inT = fmtTime24(entry?.inTime);
+                          return (
+                            <td key={day} className={cn(
+                              "px-0.5 py-1 text-center border border-slate-200 font-mono text-[10px]",
+                              isSunday(year, month, day) ? "bg-red-50" : "bg-green-50/30",
+                              inT ? "text-green-700 font-semibold" : "text-slate-300",
+                            )}>
+                              {inT || (st === "holiday" ? "H" : st === "leave" ? "LV" : "")}
+                            </td>
+                          );
+                        })}
+                        <td rowSpan={3} className="px-2 py-1 text-center font-bold text-green-700 bg-green-50/50 border border-slate-200 align-middle">
+                          {row.presentDays ?? 0}
+                        </td>
+                        <td rowSpan={3} className="px-2 py-1 text-center font-bold text-red-600 bg-red-50/50 border border-slate-200 align-middle">
+                          {row.absentDays ?? 0}
+                        </td>
+                        <td rowSpan={3} className="px-2 py-1 text-center font-bold text-amber-600 bg-amber-50/50 border border-slate-200 align-middle">
+                          {row.lateDays ?? 0}
+                        </td>
+                        <td rowSpan={3} className="px-2 py-1 text-center font-mono font-semibold text-blue-700 bg-blue-50/40 border border-slate-200 align-middle text-[10px]">
+                          {fmtHrs(row.totalWorkHours)}
+                        </td>
+                      </tr>
+
+                      {/* OUT TIME row */}
+                      <tr key={`${idx}-out`}>
+                        <td className="px-1.5 py-1 bg-red-50 border border-slate-200 font-semibold text-red-700 text-[10px] text-right whitespace-nowrap">
+                          Out
+                        </td>
+                        {daysArray.map(day => {
+                          const entry = row.dailyStatus?.find((d: any) => d.day === day);
+                          const outT = fmtTime24(entry?.outTime);
+                          return (
+                            <td key={day} className={cn(
+                              "px-0.5 py-1 text-center border border-slate-200 font-mono text-[10px]",
+                              isSunday(year, month, day) ? "bg-red-50" : "bg-red-50/20",
+                              outT ? "text-red-700 font-semibold" : "text-slate-300",
+                            )}>
+                              {outT || ""}
+                            </td>
+                          );
+                        })}
+                      </tr>
+
+                      {/* TOTAL HRS row */}
+                      <tr key={`${idx}-hrs`}>
+                        <td className="px-1.5 py-1 bg-blue-50 border border-slate-200 font-semibold text-blue-700 text-[10px] text-right whitespace-nowrap">
+                          Hrs
+                        </td>
+                        {daysArray.map(day => {
+                          const entry = row.dailyStatus?.find((d: any) => d.day === day);
+                          const st  = entry?.status || "absent";
+                          const cfg = STATUS_CFG[st] || STATUS_CFG.absent;
+                          const hrs = entry?.hours;
+                          return (
+                            <td key={day} className={cn(
+                              "px-0.5 py-1 text-center border border-slate-200 font-mono text-[10px]",
+                              isSunday(year, month, day) ? "bg-red-50" : "bg-blue-50/20",
+                            )}>
+                              {hrs != null && hrs > 0 ? (
+                                <span className="font-semibold text-blue-700">{fmtHrs(hrs)}</span>
+                              ) : st !== "absent" ? (
+                                <span className={cn("font-bold text-[9px]", cfg.text)}>{cfg.abbr}</span>
+                              ) : ""}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
