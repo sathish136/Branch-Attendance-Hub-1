@@ -1014,7 +1014,7 @@ export default function MonthlySheet() {
       ) : view === "grid" ? (
         /* ── GRID — official sheet style: IN / OUT / TOTAL HRS rows per employee ── */
         <Card className="overflow-hidden">
-          <div className="w-full overflow-x-hidden">
+          <div className="w-full overflow-x-hidden overflow-y-auto" style={{ maxHeight: "calc(100vh - 220px)" }}>
             <table className="text-[11px] border-collapse w-full table-fixed">
               <thead className="sticky top-0 z-30">
                 <tr>
