@@ -208,11 +208,11 @@ async function exportGridPdf(
     doc.text("Human Resources Department", pageW / 2, textY + 7.5, { align: "center" });
     doc.setFont("helvetica", "bold");   doc.setFontSize(7.5); doc.setTextColor(139, 0, 0);
     doc.text("MONTHLY ATTENDANCE SHEET", pageW / 2, textY + 11.5, { align: "center" });
-    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(30, 58, 138);
-    doc.text(`Branch: ${branchLabel}`, pageW / 2, textY + 15.5, { align: "center" });
+    doc.setFont("helvetica", "bold");   doc.setFontSize(8); doc.setTextColor(22, 48, 110);
+    doc.text(`Branch: ${branchLabel}`, pageW / 2, textY + 17, { align: "center" });
     doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(80, 80, 100);
     doc.text(periodStr, pageW - margin, 6, { align: "right" });
-    const ruleY = textY + 14;
+    const ruleY = textY + 20;
     doc.setDrawColor(180, 190, 210); doc.setLineWidth(0.4);
     doc.line(margin, ruleY, pageW - margin, ruleY);
     return ruleY + 1.5;
