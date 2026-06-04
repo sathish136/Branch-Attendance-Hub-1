@@ -823,7 +823,7 @@ export default function MonthlySheet() {
   const [exporting, setExporting] = useState(false);
 
   const { data: branchesRaw } = useBranches();
-  const branches: any[] = useMemo(() => (branchesRaw as any[]) || [], [branchesRaw]);
+  const branches: any[] = useMemo(() => [...((branchesRaw as any[]) || [])].sort((a, b) => (a.name || "").localeCompare(b.name || "")), [branchesRaw]);
 
   const { data, isLoading } = useMonthlySheet({
     month, year,
@@ -996,7 +996,7 @@ export default function MonthlySheet() {
           <>
             <Select value={filterEmp} onChange={e => setFilterEmp(e.target.value)} className="text-xs h-8 w-48">
               <option value="all">All Employees</option>
-              {rows.map((r: any) => <option key={r.employeeCode} value={r.employeeCode}>{r.employeeName}</option>)}
+              {[...rows].sort((a: any, b: any) => (a.employeeName || "").localeCompare(b.employeeName || "")).map((r: any) => <option key={r.employeeCode} value={r.employeeCode}>{r.employeeName}</option>)}
             </Select>
             <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs h-8 w-36">
               <option value="all">All Status</option>

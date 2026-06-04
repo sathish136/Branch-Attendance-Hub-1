@@ -354,6 +354,8 @@ export default function Reports() {
   );
 }
 
+const PAGE_SIZE = 50;
+
 /* ── Attendance Report ── */
 function AttendanceReport() {
   const now = new Date();
@@ -362,9 +364,11 @@ function AttendanceReport() {
   const [branchId, setBranchId] = useState("");
   const [status, setStatus] = useState("");
   const [employeeId, setEmployeeId] = useState("");
+  const [page, setPage] = useState(1);
   const { data: branches } = useListBranches();
   const { data: empData } = useListEmployees({ limit: 1000 });
   const allEmployees = empData?.employees || [];
+  const sortedBranches = useMemo(() => [...(branches || [])].sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")), [branches]);
   const { data, isLoading } = useGetAttendanceReport({
     startDate, endDate,
     ...(branchId    ? { branchId: Number(branchId) }    : {}),
@@ -376,6 +380,9 @@ function AttendanceReport() {
     a.date.localeCompare(b.date) || (a.employeeName || "").localeCompare(b.employeeName || "")
   );
 
+  const totalPages = Math.max(1, Math.ceil(sortedRecords.length / PAGE_SIZE));
+  const pagedRecords = sortedRecords.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   return (
     <div className="space-y-4">
       <Card className="p-4">
@@ -384,22 +391,22 @@ function AttendanceReport() {
           <div><Label className="text-xs">End Date</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
           <div>
             <Label className="text-xs">Branch</Label>
-            <Select value={branchId} onChange={e => { setBranchId(e.target.value); setEmployeeId(""); }}>
+            <Select value={branchId} onChange={e => { setBranchId(e.target.value); setEmployeeId(""); setPage(1); }}>
               <option value="">All Branches</option>
-              {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {sortedBranches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
           <div>
             <Label className="text-xs">Employee</Label>
             <EmpCombo
               value={employeeId}
-              onChange={setEmployeeId}
+              onChange={v => { setEmployeeId(v); setPage(1); }}
               employees={branchId ? allEmployees.filter((e: any) => String(e.branchId) === branchId) : allEmployees}
             />
           </div>
           <div>
             <Label className="text-xs">Status</Label>
-            <Select value={status} onChange={e => setStatus(e.target.value)}>
+            <Select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}>
               <option value="">All Status</option>
               <option value="present">Present</option>
               <option value="absent">Absent</option>
@@ -450,7 +457,7 @@ function AttendanceReport() {
                 ))}</tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {sortedRecords.slice(0, 200).map((r: any) => (
+                {pagedRecords.map((r: any) => (
                   <tr key={r.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-3 py-2 font-mono whitespace-nowrap">{r.date}</td>
                     <td className="px-3 py-2 font-mono text-muted-foreground">{r.employeeCode}</td>
@@ -476,6 +483,62 @@ function AttendanceReport() {
           </div>
         )}
       </Card>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs text-muted-foreground">
+            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, sortedRecords.length)} of {sortedRecords.length} records
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(1)}
+              disabled={page === 1}
+              className="px-2 py-1 text-xs border rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed">
+              «
+            </button>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1 text-xs border rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed">
+              ‹ Prev
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+              .reduce<(number | "…")[]>((acc, p, i, arr) => {
+                if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push("…");
+                acc.push(p);
+                return acc;
+              }, [])
+              .map((p, i) =>
+                p === "…" ? (
+                  <span key={`ellipsis-${i}`} className="px-2 py-1 text-xs text-muted-foreground">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p as number)}
+                    className={cn(
+                      "px-3 py-1 text-xs border rounded transition-colors",
+                      page === p ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"
+                    )}>
+                    {p}
+                  </button>
+                )
+              )}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1 text-xs border rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed">
+              Next ›
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages}
+              className="px-2 py-1 text-xs border rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed">
+              »
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -490,6 +553,7 @@ function MonthlyReport() {
   const { data: branches } = useListBranches();
   const { data: empData } = useListEmployees({ limit: 1000 });
   const allEmployees = empData?.employees || [];
+  const sortedBranchesM = useMemo(() => [...(branches || [])].sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")), [branches]);
   const { data, isLoading } = useGetMonthlyReport({
     month, year,
     ...(branchId ? { branchId: Number(branchId) } : {}),
@@ -519,7 +583,7 @@ function MonthlyReport() {
             <Label className="text-xs">Branch</Label>
             <Select value={branchId} onChange={e => { setBranchId(e.target.value); setEmployeeId(""); }}>
               <option value="">All Branches</option>
-              {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {sortedBranchesM.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
           <div>
@@ -605,6 +669,7 @@ function OvertimeReport() {
   const { data: branches } = useListBranches();
   const { data: empData } = useListEmployees({ limit: 1000 });
   const allEmployees = empData?.employees || [];
+  const sortedBranchesOT = useMemo(() => [...(branches || [])].sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")), [branches]);
   const { data, isLoading } = useGetOvertimeReport({
     startDate, endDate,
     ...(branchId ? { branchId: Number(branchId) } : {}),
@@ -624,7 +689,7 @@ function OvertimeReport() {
             <Label className="text-xs">Branch</Label>
             <Select value={branchId} onChange={e => { setBranchId(e.target.value); setEmployeeId(""); }}>
               <option value="">All Branches</option>
-              {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {sortedBranchesOT.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
           <div>
@@ -910,6 +975,7 @@ function IndividualSheet() {
   const { data: branches } = useListBranches();
   const { data: empData } = useListEmployees({ limit: 1000 });
   const allEmployees = empData?.employees || [];
+  const sortedBranchesIS = useMemo(() => [...(branches || [])].sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")), [branches]);
 
   const selectedEmp = allEmployees.find((e: any) => String(e.id) === employeeId) as any;
 
@@ -970,7 +1036,7 @@ function IndividualSheet() {
             <Label className="text-xs">Branch</Label>
             <Select value={branchId} onChange={e => { setBranchId(e.target.value); setEmployeeId(""); }}>
               <option value="">All Branches</option>
-              {branches?.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {sortedBranchesIS.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
           </div>
           <div>
