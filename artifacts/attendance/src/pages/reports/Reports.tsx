@@ -360,7 +360,7 @@ const PAGE_SIZE = 50;
 function AttendanceReport() {
   const now = new Date();
   const [startDate, setStartDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]);
-  const [endDate, setEndDate] = useState(now.toISOString().split("T")[0]);
+  const [endDate, setEndDate] = useState(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0]);
   const [branchId, setBranchId] = useState("");
   const [status, setStatus] = useState("");
   const [employeeId, setEmployeeId] = useState("");
