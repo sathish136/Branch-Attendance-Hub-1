@@ -565,46 +565,286 @@ async function exportTablePdf(
   doc.save(`${filename}.pdf`);
 }
 
-// ── Excel export ──────────────────────────────────────────────────────────────
-async function exportGridExcel(rows: any[], daysArray: number[], year: number, month: number, monthName: string, filename: string) {
-  const XLSX = await import("xlsx");
-  const headers = ["Employee", "Emp ID", "Designation", ...daysArray.map(d => `${d} ${getDayName(year, month, d)}`), "Present", "Absent", "Late", "Total Hrs", "OT Hrs"];
-  const body = rows.map((row: any) => [
-    row.employeeName, row.employeeCode, row.designation,
-    ...daysArray.map(day => {
-      const e = row.dailyStatus?.find((d: any) => d.day === day);
-      const st = e?.status || "absent";
-      const cfg = STATUS_CFG[st] || STATUS_CFG.absent;
-      if (!e || st === "absent") return cfg.abbr;
-      const parts = [cfg.abbr];
-      if (e.inTime)  parts.push(`In: ${fmtTime(e.inTime)}`);
-      if (e.outTime) parts.push(`Out: ${fmtTime(e.outTime)}`);
-      if (e.hours != null) parts.push(fmtHrs(e.hours));
-      return parts.join(" | ");
-    }),
-    row.presentDays ?? 0, row.absentDays ?? 0, row.lateDays ?? 0,
-    fmtHrs(row.totalWorkHours),
-    row.overtimeHours > 0 ? fmtHrs(row.overtimeHours) : "—",
-  ]);
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, `${monthName} ${year}`);
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+// ── Excel helpers ─────────────────────────────────────────────────────────────
+function xlFill(argb: string) {
+  return { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } };
+}
+function xlFont(opts: { bold?: boolean; size?: number; color?: string; italic?: boolean }) {
+  return { bold: opts.bold, size: opts.size, color: opts.color ? { argb: opts.color } : undefined, italic: opts.italic };
+}
+function xlBorder(color = "FFC8D2E6") {
+  const s = { style: "thin" as const, color: { argb: color } };
+  return { top: s, left: s, bottom: s, right: s };
+}
+function xlAlign(h: "left"|"center"|"right" = "center", wrap = false) {
+  return { horizontal: h, vertical: "middle" as const, wrapText: wrap };
 }
 
+// ── Grid Excel — matches Grid PDF: per-employee multi-row blocks ──────────────
+async function exportGridExcel(rows: any[], daysArray: number[], year: number, month: number, monthName: string, filename: string) {
+  const { Workbook } = await import("exceljs");
+  const wb = new Workbook();
+  wb.creator = "Sri Lanka Post";
+  wb.created = new Date();
+  const ws = wb.addWorksheet(`${monthName} ${year}`);
+
+  const numDays  = daysArray.length;
+  const totalCols = 1 + numDays; // label col + one col per day
+  const periodStr = `Period: ${String(1).padStart(2,"0")}/${String(month).padStart(2,"0")}/${year} \u2013 ${String(daysArray[daysArray.length-1]).padStart(2,"0")}/${String(month).padStart(2,"0")}/${year}`;
+
+  // Set column widths
+  ws.getColumn(1).width = 14;
+  daysArray.forEach((_, i) => { ws.getColumn(i + 2).width = 6.5; });
+
+  function addMergedTitle(text: string, fontColor: string, bold: boolean, size: number, fillColor: string) {
+    const r = ws.addRow([text]);
+    ws.mergeCells(r.number, 1, r.number, totalCols);
+    r.height = size + 6;
+    r.getCell(1).font      = xlFont({ bold, size, color: fontColor });
+    r.getCell(1).alignment = xlAlign("center");
+    r.getCell(1).fill      = xlFill(fillColor);
+  }
+
+  const STATUS_XL_COLORS: Record<string, string> = {
+    P: "FF157F3D", L: "FF92400E", A: "FFB91C1C",
+    HD: "FF713F12", LV: "FF1D4ED8", H: "FF646478",
+  };
+
+  for (const [empIdx, row] of rows.entries()) {
+    if (empIdx > 0) ws.addRow([]); // blank separator
+
+    // ── Document header (on every employee block) ──────────────────
+    addMergedTitle("SRI LANKA POST",              "FF16306E", true,  13, "FFFFFFFF");
+    addMergedTitle("Human Resources Department",  "FF505064", false,  8, "FFFFFFFF");
+    addMergedTitle("MONTHLY ATTENDANCE SHEET",    "FF8B0000", true,   9, "FFFFFFFF");
+    addMergedTitle(periodStr,                     "FF505064", false,  7, "FFFFFFFF");
+    ws.addRow([]);
+
+    // ── Employee info bar ──────────────────────────────────────────
+    const infoFields = [
+      `Employee Name: ${row.employeeName || "N/A"}`,
+      `Employee ID: ${row.employeeCode || "N/A"}`,
+      `Department: ${row.department || "N/A"}`,
+      ...(row.staffCategory ? [`Staff Category: ${row.staffCategory}`] : []),
+    ];
+    const span = Math.max(1, Math.floor(totalCols / infoFields.length));
+    const infoRowNum = ws.rowCount + 1;
+    ws.addRow(infoFields);
+    const infoRow = ws.getRow(infoRowNum);
+    infoRow.height = 16;
+    infoRow.fill   = xlFill("FFE8EEFF");
+    infoFields.forEach((_, fi) => {
+      const startCol = fi * span + 1;
+      const endCol   = fi === infoFields.length - 1 ? totalCols : (fi + 1) * span;
+      if (endCol > startCol) ws.mergeCells(infoRowNum, startCol, infoRowNum, endCol);
+      const cell = infoRow.getCell(startCol);
+      cell.font      = xlFont({ bold: true, size: 7.5, color: "FF16306E" });
+      cell.alignment = xlAlign("left");
+      cell.border    = xlBorder();
+    });
+
+    ws.addRow([]);
+
+    // ── Day header row ─────────────────────────────────────────────
+    const headValues = [
+      "TIME\nDETAILS",
+      ...daysArray.map(d => `${String(d).padStart(2,"0")}\n${getDayName(year, month, d)}`),
+    ];
+    const headRowNum = ws.rowCount + 1;
+    ws.addRow(headValues);
+    const headRow = ws.getRow(headRowNum);
+    headRow.height = 24;
+    headValues.forEach((_, ci) => {
+      const cell = headRow.getCell(ci + 1);
+      const day  = daysArray[ci - 1];
+      const isSun = ci > 1 && isSunday(year, month, day);
+      cell.fill      = xlFill(ci === 1 ? "FF0F235A" : isSun ? "FF7F1D1D" : "FF16306E");
+      cell.font      = xlFont({ bold: true, size: 6, color: "FFFFFFFF" });
+      cell.alignment = xlAlign("center", true);
+      cell.border    = xlBorder("FF8090B0");
+    });
+
+    // ── Metric rows (IN TIME / OUT TIME / WORKED HRS / STATUS / OVERTIME) ──
+    type MetricKey2 = "inTime"|"outTime"|"workedHrs"|"status"|"overtime";
+    const METRICS: Array<{ label: string; key: MetricKey2; color: string }> = [
+      { label: "IN TIME",    key: "inTime",    color: "FFB91C1C" },
+      { label: "OUT TIME",   key: "outTime",   color: "FF16306E" },
+      { label: "WORKED HRS", key: "workedHrs", color: "FF323246" },
+      { label: "STATUS",     key: "status",    color: "FF000000" },
+      { label: "OVERTIME",   key: "overtime",  color: "FFB45309" },
+    ];
+
+    for (const metric of METRICS) {
+      const cells: (string|number)[] = [metric.label];
+      daysArray.forEach(day => {
+        const e  = row.dailyStatus?.find((d: any) => d.day === day);
+        const st = e?.status || "absent";
+        const abbr = (STATUS_CFG[st] || STATUS_CFG.absent).abbr;
+        switch (metric.key) {
+          case "inTime":    cells.push(fmtTime24(e?.inTime)  || (st === "absent" ? "" : "—")); break;
+          case "outTime":   cells.push(fmtTime24(e?.outTime) || (st === "absent" ? "" : "—")); break;
+          case "workedHrs": { const h = e?.hours; cells.push(h != null && h > 0 ? fmtHrs(h) : (st === "absent" ? "" : "—")); break; }
+          case "status":    cells.push(abbr); break;
+          case "overtime":  { const ot = e?.overtimeHours; cells.push(ot && ot > 0 ? fmtHrs(ot) : "-"); break; }
+        }
+      });
+
+      const mRowNum = ws.rowCount + 1;
+      ws.addRow(cells);
+      const mRow = ws.getRow(mRowNum);
+      mRow.height = 13;
+      cells.forEach((_, ci) => {
+        const cell = mRow.getCell(ci + 1);
+        const day  = daysArray[ci - 1];
+        const isSun = ci > 1 && day && isSunday(year, month, day);
+        if (ci === 1) {
+          cell.fill      = xlFill("FFE8EEFF");
+          cell.font      = xlFont({ bold: true, size: 6, color: "FF16306E" });
+          cell.alignment = xlAlign("left");
+        } else {
+          cell.fill = xlFill(isSun ? "FFFEF2F2" : "FFFFFFFF");
+          let color = metric.color;
+          if (metric.key === "status") { color = STATUS_XL_COLORS[String(cell.value || "")] || "FF646478"; }
+          cell.font      = xlFont({ size: 7, color });
+          cell.alignment = xlAlign("center");
+        }
+        cell.border = xlBorder();
+      });
+    }
+
+    // ── Monthly summary bar ────────────────────────────────────────
+    const totalHrs = fmtHrs(row.totalWorkHours);
+    const totalOT  = row.overtimeHours > 0 ? fmtHrs(row.overtimeHours) : "0h";
+    const sumText  = `MONTHLY SUMMARY — ${row.employeeName} (${row.employeeCode})   |   Total Working Hours: ${totalHrs}   |   Total Overtime Hours: ${totalOT}`;
+    const sumRowNum = ws.rowCount + 1;
+    ws.addRow([sumText]);
+    ws.mergeCells(sumRowNum, 1, sumRowNum, totalCols);
+    const sumRow = ws.getRow(sumRowNum);
+    sumRow.height = 14;
+    sumRow.getCell(1).fill      = xlFill("FFEBF0FC");
+    sumRow.getCell(1).font      = xlFont({ bold: true, size: 8, color: "FF16306E" });
+    sumRow.getCell(1).alignment = xlAlign("left");
+    sumRow.getCell(1).border    = xlBorder("FFAABCDC");
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = `${filename}.xlsx`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Table Excel — matches Table PDF: flat timing list ─────────────────────────
 async function exportTableExcel(filteredTableRows: any[], monthName: string, year: number, filename: string) {
-  const XLSX = await import("xlsx");
-  const headers = ["Date", "Day", "Employee", "Emp ID", "Designation", "Status", "In Time", "Out Time", "Work Hrs", "OT Hrs"];
-  const body = filteredTableRows.map(r => [
-    `${r.day} ${monthName} ${year}`, r.dayName, r.employeeName, r.employeeCode, r.designation,
-    STATUS_CFG[r.status]?.label || r.status,
-    fmtTime(r.inTime) || "—", fmtTime(r.outTime) || "—",
-    fmtHrs(r.hours), r.ot && r.ot > 0 ? fmtHrs(r.ot) : "—",
-  ]);
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, `${monthName} ${year}`);
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+  const { Workbook } = await import("exceljs");
+  const wb = new Workbook();
+  wb.creator = "Sri Lanka Post";
+  wb.created = new Date();
+  const ws = wb.addWorksheet(`${monthName} ${year}`);
+
+  // Sort to match PDF: employee name → code → day
+  const sortedRows = [...filteredTableRows].sort((a, b) => {
+    const nc = a.employeeName.localeCompare(b.employeeName);
+    if (nc !== 0) return nc;
+    const cc = a.employeeCode.localeCompare(b.employeeCode);
+    if (cc !== 0) return cc;
+    return a.day - b.day;
+  });
+
+  // ── Title rows ──────────────────────────────────────────────────
+  const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+  const numCols = 9;
+  const addTitle = (text: string, bold: boolean, size: number, color: string) => {
+    const r = ws.addRow([text]);
+    ws.mergeCells(r.number, 1, r.number, numCols);
+    r.height = size + 5;
+    r.getCell(1).font      = xlFont({ bold, size, color });
+    r.getCell(1).alignment = xlAlign("center");
+  };
+  addTitle("SRI LANKA POST — Colombo District", true, 12, "FF16306E");
+  addTitle(`Timing Detail — ${monthName} ${year}`, false, 9, "FF505064");
+  addTitle(`Generated: ${today}`, false, 7.5, "FF888898");
+  ws.addRow([]);
+
+  // ── Column widths ───────────────────────────────────────────────
+  const colWidths = [20, 10, 28, 14, 16, 14, 14, 14, 12];
+  colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+  // ── Header row ──────────────────────────────────────────────────
+  const headers = ["Date", "Day", "Employee", "Emp ID", "Status", "In Time", "Out Time", "Work Hrs", "OT Hrs"];
+  const headRowNum = ws.rowCount + 1;
+  ws.addRow(headers);
+  const headRow = ws.getRow(headRowNum);
+  headRow.height = 18;
+  headers.forEach((_, ci) => {
+    const cell = headRow.getCell(ci + 1);
+    cell.fill      = xlFill("FF16306E");
+    cell.font      = xlFont({ bold: true, size: 9, color: "FFFFFFFF" });
+    cell.alignment = xlAlign(ci <= 1 || ci === 2 ? "left" : "center");
+    cell.border    = xlBorder("FF8090B0");
+  });
+
+  // ── Data rows ───────────────────────────────────────────────────
+  const STATUS_XL: Record<string, string> = {
+    present: "FF157F3D", late: "FF92400E", absent: "FFB91C1C",
+    half_day: "FF713F12", leave: "FF1D4ED8", holiday: "FF646478",
+  };
+
+  sortedRows.forEach((r, i) => {
+    const isNewEmp = i === 0 || r.employeeCode !== sortedRows[i - 1].employeeCode;
+    const values = [
+      `${String(r.day).padStart(2,"0")} ${monthName} ${year}`,
+      r.dayName,
+      r.employeeName,
+      r.employeeCode,
+      STATUS_CFG[r.status]?.label || r.status,
+      fmtTime(r.inTime)  || "—",
+      fmtTime(r.outTime) || "—",
+      fmtHrs(r.hours),
+      r.ot && r.ot > 0 ? fmtHrs(r.ot) : "—",
+    ];
+    const rowNum = ws.rowCount + 1;
+    ws.addRow(values);
+    const dataRow = ws.getRow(rowNum);
+    dataRow.height = 15;
+
+    values.forEach((_, ci) => {
+      const cell = dataRow.getCell(ci + 1);
+      cell.fill      = xlFill(r.isSun ? "FFFEF2F2" : "FFFFFFFF");
+      cell.alignment = xlAlign(ci === 2 ? "left" : ci <= 1 ? "center" : "center");
+      cell.font      = xlFont({ size: 9, color: "FF282840" });
+      // Per-column styling
+      if (ci === 2) cell.font = xlFont({ bold: true, size: 9, color: "FF16306E" });
+      if (ci === 4) cell.font = xlFont({ size: 9, color: STATUS_XL[r.status] || "FF646478" });
+      if (ci === 5) cell.font = xlFont({ size: 9, color: "FF157F3D" });
+      if (ci === 6) cell.font = xlFont({ size: 9, color: "FFB91C1C" });
+      if (ci === 7) cell.font = xlFont({ size: 9, color: "FF1D4ED8" });
+      if (ci === 8) cell.font = xlFont({ size: 9, color: "FFC2410C" });
+
+      // Navy top border at new employee group
+      const topBorder = isNewEmp
+        ? { style: "medium" as const, color: { argb: "FF16306E" } }
+        : { style: "thin" as const, color: { argb: "FFD8E0EE" } };
+      cell.border = { top: topBorder, left: xlBorder().left, bottom: xlBorder().bottom, right: xlBorder().right };
+    });
+  });
+
+  // ── Footer row ──────────────────────────────────────────────────
+  ws.addRow([]);
+  const footRowNum = ws.rowCount + 1;
+  ws.addRow([`Generated: ${today} | Sri Lanka Post | Confidential Document`]);
+  ws.mergeCells(footRowNum, 1, footRowNum, numCols);
+  const footRow = ws.getRow(footRowNum);
+  footRow.getCell(1).font      = xlFont({ size: 7, color: "FF888898" });
+  footRow.getCell(1).alignment = xlAlign("center");
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = `${filename}.xlsx`; a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
