@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import {
   Calendar as CalendarIcon, Clock,
   LayoutGrid, List, ChevronUp, ChevronDown,
-  FileText, Sheet, Building2, ChevronDown as ChevronDownIcon,
+  FileText, Sheet, Building2, ChevronDown as ChevronDownIcon, Users,
 } from "lucide-react";
 import { PageHeader, Card, Select } from "@/components/ui";
 import { useMonthlySheet } from "@/hooks/use-attendance";
@@ -833,6 +833,9 @@ export default function MonthlySheet() {
   const daysInMonth = new Date(year, month, 0).getDate();
   const daysArray   = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const rows: any[] = data?.rows || [];
+  const filteredGridRows = useMemo(() =>
+    filterEmp === "all" ? rows : rows.filter((r: any) => r.employeeCode === filterEmp),
+  [rows, filterEmp]);
   const yearOptions = [2023, 2024, 2025, 2026, 2027];
   const monthName   = new Date(2000, month - 1, 1).toLocaleString("default", { month: "long" });
   const selectedBranch = branches.find((b: any) => String(b.id) === branchId);
@@ -980,7 +983,22 @@ export default function MonthlySheet() {
         </div>
 
         {view === "grid" && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="relative shrink-0">
+              <Users className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <ChevronDownIcon className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <select
+                value={filterEmp}
+                onChange={e => setFilterEmp(e.target.value)}
+                className="h-8 pl-8 pr-8 rounded-lg border border-border bg-background text-xs appearance-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all cursor-pointer min-w-[180px]"
+              >
+                <option value="all">All Employees</option>
+                {[...rows].sort((a: any, b: any) => (a.employeeName || "").localeCompare(b.employeeName || "")).map((r: any) => (
+                  <option key={r.employeeCode} value={r.employeeCode}>{r.employeeName}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
             <Clock className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">Show times</span>
             <button onClick={() => setShowTimes(v => !v)}
@@ -989,6 +1007,7 @@ export default function MonthlySheet() {
               <span className={cn("inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform",
                 showTimes ? "translate-x-4" : "translate-x-0.5")} />
             </button>
+            </div>
           </div>
         )}
 
@@ -1018,31 +1037,31 @@ export default function MonthlySheet() {
             <table className="text-[11px] border-collapse w-full table-fixed">
               <thead className="sticky top-0 z-30">
                 <tr>
-                  <th className="px-3 py-2 bg-slate-500 text-white font-semibold border border-slate-400 sticky left-0 z-40 w-[160px] text-left">
+                  <th className="px-3 py-2 bg-[#1a3a5c] text-white font-semibold border border-[#1a3a5c] sticky left-0 z-40 w-[160px] text-left">
                     Employee
                   </th>
-                  <th className="px-1 py-2 bg-slate-400 text-slate-800 font-semibold border border-slate-300 text-center w-[32px] text-[10px]">
+                  <th className="px-1 py-2 bg-[#1e4270] text-blue-100 font-semibold border border-[#1a3a5c] text-center w-[32px] text-[10px]">
                     Time
                   </th>
                   {daysArray.map(day => (
                     <th key={day} className={cn(
-                      "px-0 py-1 font-semibold border border-slate-300 text-center",
-                      isSunday(year, month, day) ? "bg-red-400/80 text-white" : "bg-slate-500 text-white",
+                      "px-0 py-1 font-semibold border border-[#1a3a5c] text-center",
+                      isSunday(year, month, day) ? "bg-red-700 text-red-100" : "bg-[#1a3a5c] text-white",
                     )}>
                       <div className="font-bold leading-tight text-[11px]">{day}</div>
                       <div className={cn("text-[9px] font-normal leading-tight",
-                        isSunday(year, month, day) ? "text-red-100" : "text-slate-200")}>
+                        isSunday(year, month, day) ? "text-red-200" : "text-blue-200")}>
                         {getDayName(year, month, day)}
                       </div>
                     </th>
                   ))}
-                  <th className="px-1 py-2 bg-green-500  text-white font-bold border border-slate-300 text-center w-[28px] text-[10px]">P</th>
-                  <th className="px-1 py-2 bg-red-500    text-white font-bold border border-slate-300 text-center w-[28px] text-[10px]">A</th>
-                  <th className="px-1 py-2 bg-blue-500   text-white font-bold border border-slate-300 text-center w-[48px] text-[10px]">Hrs</th>
+                  <th className="px-1 py-2 bg-green-700  text-white font-bold border border-[#1a3a5c] text-center w-[28px] text-[10px]">P</th>
+                  <th className="px-1 py-2 bg-red-700    text-white font-bold border border-[#1a3a5c] text-center w-[28px] text-[10px]">A</th>
+                  <th className="px-1 py-2 bg-[#1e4270]  text-white font-bold border border-[#1a3a5c] text-center w-[48px] text-[10px]">Hrs</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row: any, idx: number) => {
+                {filteredGridRows.map((row: any, idx: number) => {
                   const borderTop = idx === 0 ? "" : "border-t-2 border-t-slate-400";
                   return (
                     <React.Fragment key={idx}>
