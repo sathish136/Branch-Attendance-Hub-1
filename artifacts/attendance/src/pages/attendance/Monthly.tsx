@@ -1014,19 +1014,19 @@ export default function MonthlySheet() {
       ) : view === "grid" ? (
         /* ── GRID — official sheet style: IN / OUT / TOTAL HRS rows per employee ── */
         <Card className="overflow-hidden">
-          <div className="w-full overflow-x-auto">
-            <table className="text-[11px] border-collapse min-w-max">
+          <div className="w-full overflow-x-hidden">
+            <table className="text-[11px] border-collapse w-full table-fixed">
               <thead>
                 <tr>
-                  <th className="px-3 py-2 bg-slate-700 text-white font-semibold border border-slate-600 sticky left-0 z-20 min-w-[180px] text-left">
+                  <th className="px-3 py-2 bg-slate-700 text-white font-semibold border border-slate-600 sticky left-0 z-20 w-[160px] text-left">
                     Employee
                   </th>
-                  <th className="px-2 py-2 bg-slate-800 text-slate-300 font-semibold border border-slate-600 text-center min-w-[64px] text-[10px]">
+                  <th className="px-1 py-2 bg-slate-800 text-slate-300 font-semibold border border-slate-600 text-center w-[32px] text-[10px]">
                     Time
                   </th>
                   {daysArray.map(day => (
                     <th key={day} className={cn(
-                      "px-0.5 py-1 font-semibold border border-slate-600 text-center min-w-[46px]",
+                      "px-0 py-1 font-semibold border border-slate-600 text-center",
                       isSunday(year, month, day) ? "bg-red-900/70 text-red-200" : "bg-slate-700 text-white",
                     )}>
                       <div className="font-bold leading-tight text-[11px]">{day}</div>
@@ -1036,10 +1036,10 @@ export default function MonthlySheet() {
                       </div>
                     </th>
                   ))}
-                  <th className="px-2 py-2 bg-green-700  text-white font-bold border border-slate-600 text-center min-w-[36px] text-[10px]">P</th>
-                  <th className="px-2 py-2 bg-red-700    text-white font-bold border border-slate-600 text-center min-w-[36px] text-[10px]">A</th>
-                  <th className="px-2 py-2 bg-amber-600  text-white font-bold border border-slate-600 text-center min-w-[36px] text-[10px]">L</th>
-                  <th className="px-2 py-2 bg-blue-700   text-white font-bold border border-slate-600 text-center min-w-[60px] text-[10px]">Total Hrs</th>
+                  <th className="px-1 py-2 bg-green-700  text-white font-bold border border-slate-600 text-center w-[28px] text-[10px]">P</th>
+                  <th className="px-1 py-2 bg-red-700    text-white font-bold border border-slate-600 text-center w-[28px] text-[10px]">A</th>
+                  <th className="px-1 py-2 bg-amber-600  text-white font-bold border border-slate-600 text-center w-[28px] text-[10px]">L</th>
+                  <th className="px-1 py-2 bg-blue-700   text-white font-bold border border-slate-600 text-center w-[48px] text-[10px]">Hrs</th>
                 </tr>
               </thead>
               <tbody>
