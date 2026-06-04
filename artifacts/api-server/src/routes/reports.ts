@@ -11,7 +11,26 @@ router.get("/attendance", async (req, res) => {
   try {
     const reqUser = await getRequestUser(req);
     const { startDate, endDate, branchId, employeeId, status } = req.query;
-    const all = await db.select({
+    const start = (startDate as string) || today();
+    const end   = (endDate   as string) || today();
+
+    /* All active employees (optionally filtered) */
+    let allEmp = await db.select({
+      emp: employees,
+      branchName: branches.name,
+    }).from(employees)
+      .leftJoin(branches, eq(employees.branchId, branches.id))
+      .where(eq(employees.status, "active"));
+
+    if (reqUser && !reqUser.isSuper && reqUser.branchIds.length > 0) {
+      const allowed = new Set(reqUser.branchIds);
+      allEmp = allEmp.filter(r => r.emp.branchId != null && allowed.has(r.emp.branchId));
+    }
+    if (branchId)    allEmp = allEmp.filter(r => r.emp.branchId === Number(branchId));
+    if (employeeId)  allEmp = allEmp.filter(r => r.emp.id === Number(employeeId));
+
+    /* All actual records in range */
+    const recs = await db.select({
       rec: attendanceRecords,
       empName: employees.fullName,
       empCode: employees.employeeId,
@@ -20,40 +39,85 @@ router.get("/attendance", async (req, res) => {
       .leftJoin(employees, eq(attendanceRecords.employeeId, employees.id))
       .leftJoin(branches, eq(attendanceRecords.branchId, branches.id));
 
-    let filtered = all;
+    let existingRecs = recs.filter(r => r.rec.date >= start && r.rec.date <= end);
     if (reqUser && !reqUser.isSuper && reqUser.branchIds.length > 0) {
       const allowed = new Set(reqUser.branchIds);
-      filtered = filtered.filter(r => r.rec.branchId != null && allowed.has(r.rec.branchId));
+      existingRecs = existingRecs.filter(r => r.rec.branchId != null && allowed.has(r.rec.branchId));
     }
-    if (startDate) filtered = filtered.filter(r => r.rec.date >= (startDate as string));
-    if (endDate) filtered = filtered.filter(r => r.rec.date <= (endDate as string));
-    if (branchId) filtered = filtered.filter(r => r.rec.branchId === Number(branchId));
-    if (employeeId) filtered = filtered.filter(r => r.rec.employeeId === Number(employeeId));
-    if (status) filtered = filtered.filter(r => r.rec.status === status);
+    if (branchId)   existingRecs = existingRecs.filter(r => r.rec.branchId === Number(branchId));
+    if (employeeId) existingRecs = existingRecs.filter(r => r.rec.employeeId === Number(employeeId));
+
+    /* Build lookup: empId+date → record */
+    const recMap = new Map<string, typeof existingRecs[0]>();
+    for (const r of existingRecs) recMap.set(`${r.rec.employeeId}|${r.rec.date}`, r);
+
+    /* Generate all dates in range (capped at today — no future absents) */
+    const todayStr = today();
+    const dates: string[] = [];
+    const cur = new Date(start);
+    const endD = new Date(end < todayStr ? end : todayStr);
+    while (cur <= endD) {
+      dates.push(cur.toISOString().split("T")[0]);
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    /* Build full records: real or synthetic absent */
+    type OutRec = {
+      id: number; employeeId: number; date: string; status: string;
+      inTime1: string|null; outTime1: string|null; totalHours: number|null;
+      overtimeHours: number|null; branchId: number|null;
+      employeeName: string; employeeCode: string; branchName: string;
+      shiftName: null; createdAt: string;
+    };
+
+    const allRecords: OutRec[] = [];
+    for (const { emp, branchName } of allEmp) {
+      for (const date of dates) {
+        const key = `${emp.id}|${date}`;
+        const found = recMap.get(key);
+        if (found) {
+          allRecords.push({
+            ...found.rec,
+            employeeName: found.empName || "",
+            employeeCode: found.empCode || "",
+            branchName: found.branchName || "",
+            shiftName: null,
+            createdAt: found.rec.createdAt.toISOString(),
+          });
+        } else {
+          allRecords.push({
+            id: 0, employeeId: emp.id, date, status: "absent",
+            inTime1: null, outTime1: null, totalHours: null,
+            overtimeHours: null, branchId: emp.branchId ?? null,
+            employeeName: emp.fullName || "",
+            employeeCode: emp.employeeId || "",
+            branchName: branchName || "",
+            shiftName: null,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+    }
+
+    let filtered = allRecords;
+    if (status) filtered = filtered.filter(r => r.status === (status as string));
 
     const summary = { present: 0, absent: 0, late: 0, halfDay: 0, leave: 0, holiday: 0 };
     for (const r of filtered) {
-      if (r.rec.status === "present") summary.present++;
-      else if (r.rec.status === "absent") summary.absent++;
-      else if (r.rec.status === "late") summary.late++;
-      else if (r.rec.status === "half_day") summary.halfDay++;
-      else if (r.rec.status === "leave") summary.leave++;
-      else if (r.rec.status === "holiday") summary.holiday++;
+      if (r.status === "present")  summary.present++;
+      else if (r.status === "absent")   summary.absent++;
+      else if (r.status === "late")     summary.late++;
+      else if (r.status === "half_day") summary.halfDay++;
+      else if (r.status === "leave")    summary.leave++;
+      else if (r.status === "holiday")  summary.holiday++;
     }
 
     res.json({
-      startDate: startDate as string,
-      endDate: endDate as string,
+      startDate: start,
+      endDate: end,
       totalRecords: filtered.length,
       summary,
-      records: filtered.map(r => ({
-        ...r.rec,
-        employeeName: r.empName || "",
-        employeeCode: r.empCode || "",
-        branchName: r.branchName || "",
-        shiftName: null,
-        createdAt: r.rec.createdAt.toISOString(),
-      })),
+      records: filtered,
     });
   } catch (e) { console.error(e); res.status(500).json({ message: "Error", success: false }); }
 });
