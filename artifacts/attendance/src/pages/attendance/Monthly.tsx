@@ -1016,9 +1016,9 @@ export default function MonthlySheet() {
         <Card className="overflow-hidden">
           <div className="w-full overflow-x-hidden">
             <table className="text-[11px] border-collapse w-full table-fixed">
-              <thead>
+              <thead className="sticky top-0 z-30">
                 <tr>
-                  <th className="px-3 py-2 bg-slate-700 text-white font-semibold border border-slate-600 sticky left-0 z-20 w-[160px] text-left">
+                  <th className="px-3 py-2 bg-slate-700 text-white font-semibold border border-slate-600 sticky left-0 z-40 w-[160px] text-left">
                     Employee
                   </th>
                   <th className="px-1 py-2 bg-slate-800 text-slate-300 font-semibold border border-slate-600 text-center w-[32px] text-[10px]">
