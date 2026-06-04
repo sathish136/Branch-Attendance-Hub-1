@@ -214,6 +214,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("org_logo_updated", handler);
   }, []);
 
+  /* Auto-collapse sidebar on monthly attendance page */
+  useEffect(() => {
+    if (location === "/attendance/monthly") setCollapsed(true);
+  }, [location]);
+
   /* Live clock */
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);

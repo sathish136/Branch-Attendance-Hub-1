@@ -1038,7 +1038,6 @@ export default function MonthlySheet() {
                   ))}
                   <th className="px-1 py-2 bg-green-700  text-white font-bold border border-slate-600 text-center w-[28px] text-[10px]">P</th>
                   <th className="px-1 py-2 bg-red-700    text-white font-bold border border-slate-600 text-center w-[28px] text-[10px]">A</th>
-                  <th className="px-1 py-2 bg-amber-600  text-white font-bold border border-slate-600 text-center w-[28px] text-[10px]">L</th>
                   <th className="px-1 py-2 bg-blue-700   text-white font-bold border border-slate-600 text-center w-[48px] text-[10px]">Hrs</th>
                 </tr>
               </thead>
@@ -1081,9 +1080,6 @@ export default function MonthlySheet() {
                         </td>
                         <td rowSpan={3} className="px-2 py-1 text-center font-bold text-red-600 bg-red-50/50 border border-slate-200 align-middle">
                           {row.absentDays ?? 0}
-                        </td>
-                        <td rowSpan={3} className="px-2 py-1 text-center font-bold text-amber-600 bg-amber-50/50 border border-slate-200 align-middle">
-                          {row.lateDays ?? 0}
                         </td>
                         <td rowSpan={3} className="px-2 py-1 text-center font-mono font-semibold text-blue-700 bg-blue-50/40 border border-slate-200 align-middle text-[10px]">
                           {fmtHrs(row.totalWorkHours)}
