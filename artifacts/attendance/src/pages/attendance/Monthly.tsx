@@ -2,10 +2,11 @@ import React, { useState, useMemo } from "react";
 import {
   Calendar as CalendarIcon, Clock,
   LayoutGrid, List, ChevronUp, ChevronDown,
-  FileText, Sheet,
+  FileText, Sheet, Building2, ChevronDown as ChevronDownIcon,
 } from "lucide-react";
 import { PageHeader, Card, Select } from "@/components/ui";
 import { useMonthlySheet } from "@/hooks/use-attendance";
+import { useBranches } from "@/hooks/use-core";
 import { cn } from "@/lib/utils";
 
 type ViewMode = "grid" | "table";
@@ -812,16 +813,25 @@ export default function MonthlySheet() {
   const [sortAsc, setSortAsc]     = useState(true);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterEmp, setFilterEmp]       = useState("all");
+  const [branchId, setBranchId]         = useState("all");
   const [exporting, setExporting] = useState(false);
 
-  const { data, isLoading } = useMonthlySheet({ month, year });
+  const { data: branchesRaw } = useBranches();
+  const branches: any[] = useMemo(() => (branchesRaw as any[]) || [], [branchesRaw]);
+
+  const { data, isLoading } = useMonthlySheet({
+    month, year,
+    ...(branchId !== "all" ? { branchId: Number(branchId) } : {}),
+  });
 
   const daysInMonth = new Date(year, month, 0).getDate();
   const daysArray   = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const rows: any[] = data?.rows || [];
   const yearOptions = [2023, 2024, 2025, 2026, 2027];
   const monthName   = new Date(2000, month - 1, 1).toLocaleString("default", { month: "long" });
-  const filename    = `Monthly-Attendance-${monthName}-${year}`;
+  const selectedBranch = branches.find((b: any) => String(b.id) === branchId);
+  const branchLabel = selectedBranch ? selectedBranch.name : "All-Branches";
+  const filename    = `Monthly-Attendance-${branchLabel}-${monthName}-${year}`;
 
   const tableRows = useMemo(() => {
     const flat: any[] = [];
@@ -930,6 +940,22 @@ export default function MonthlySheet() {
           <Select value={year} onChange={e => setYear(parseInt(e.target.value))} className="w-24">
             {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
           </Select>
+        </div>
+
+        {/* Branch filter */}
+        <div className="relative shrink-0">
+          <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <ChevronDownIcon className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <select
+            value={branchId}
+            onChange={e => setBranchId(e.target.value)}
+            className="h-8 pl-8 pr-8 rounded-lg border border-border bg-background text-xs appearance-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all cursor-pointer min-w-[160px]"
+          >
+            <option value="all">All Branches</option>
+            {branches.map((b: any) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
         </div>
 
         <div className="flex items-center bg-muted rounded-lg p-0.5 gap-0.5">
