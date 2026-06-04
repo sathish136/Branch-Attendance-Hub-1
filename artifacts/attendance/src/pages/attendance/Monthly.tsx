@@ -148,7 +148,7 @@ function fmtTime24(t: string | null | undefined) {
   return `${String(p.h).padStart(2, "0")}:${p.m}`;
 }
 
-// ── Grid PDF — per-employee rows layout matching official monthly attendance sheet ──
+// ── Grid PDF — compact multi-employee layout (all employees on as few pages as possible) ──
 async function exportGridPdf(
   rows: any[],
   daysArray: number[],
@@ -172,282 +172,241 @@ async function exportGridPdf(
     liveUData = await toDataUrl("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQCzrc0k5wmNzmItazY38yj1_7K5zAFLMxn-Q&s");
   } catch { /* no logos */ }
 
-  const margin  = 8;
+  const margin   = 6;
   const contentW = pageW - margin * 2;
-  const labelW  = 22;
-  const dayW    = Math.max(7, (contentW - labelW) / daysArray.length);
-
   const periodStr = `Period: ${String(1).padStart(2,"0")}/${String(month).padStart(2,"0")}/${year} \u2013 ${String(daysArray[daysArray.length-1]).padStart(2,"0")}/${String(month).padStart(2,"0")}/${year}`;
 
-  // ── Draw the SLP-style page header ──────────────────────────────────────────
-  async function drawPageHeader() {
-    let logoW = 18, logoH = 18;
+  // Column widths: employee name col | time label col | day cols | summary cols
+  const empW   = 32;  // employee name column
+  const timeW  = 8;   // In/Out/Hrs label
+  const sumW   = 9;   // P / A / L / TotalHrs
+  const nSumCols = 4;
+  const dayW   = Math.max(5.8, (contentW - empW - timeW - sumW * nSumCols) / daysArray.length);
+
+  // Column index helpers
+  const COL_EMP   = 0;
+  const COL_TIME  = 1;
+  const COL_DAY0  = 2;                         // first day column
+  const COL_P     = COL_DAY0 + daysArray.length;
+  const COL_A     = COL_P + 1;
+  const COL_L     = COL_A + 1;
+  const COL_TOTAL = COL_L + 1;
+
+  // ── Page header (drawn once; autoTable repeats head on every page) ───────────
+  async function drawPageHeader(): Promise<number> {
+    let logoW = 0, logoH = 0;
     if (slpData) {
       const dims = await getImageDimensions(slpData);
-      logoH = 16; logoW = 16 * (dims.w / dims.h);
-      // Logo centered at the very top
+      logoH = 14; logoW = 14 * (dims.w / dims.h);
       doc.addImage(slpData, "PNG", (pageW - logoW) / 2, 3, logoW, logoH);
     }
-
-    const textY = 3 + logoH + 2; // text block starts right below logo
-
-    // "SRI LANKA POST" — bold navy blue, centered
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.setTextColor(22, 48, 110);
-    doc.text("SRI LANKA POST", pageW / 2, textY + 4, { align: "center" });
-
-    // "Human Resources Department" — gray, centered
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(80, 80, 100);
-    doc.text("Human Resources Department", pageW / 2, textY + 9, { align: "center" });
-
-    // "MONTHLY ATTENDANCE SHEET" — bold dark maroon, centered
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.5);
-    doc.setTextColor(139, 0, 0);
-    doc.text("MONTHLY ATTENDANCE SHEET", pageW / 2, textY + 14, { align: "center" });
-
-    // Period — top right corner
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(80, 80, 100);
-    doc.text(periodStr, pageW - margin, 7, { align: "right" });
-
-    // Horizontal rule
-    const ruleY = textY + 17;
-    doc.setDrawColor(180, 190, 210);
-    doc.setLineWidth(0.5);
+    const textY = 3 + logoH + 1.5;
+    doc.setFont("helvetica", "bold");   doc.setFontSize(11); doc.setTextColor(22, 48, 110);
+    doc.text("SRI LANKA POST", pageW / 2, textY + 3.5, { align: "center" });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(80, 80, 100);
+    doc.text("Human Resources Department", pageW / 2, textY + 7.5, { align: "center" });
+    doc.setFont("helvetica", "bold");   doc.setFontSize(7.5); doc.setTextColor(139, 0, 0);
+    doc.text("MONTHLY ATTENDANCE SHEET", pageW / 2, textY + 11.5, { align: "center" });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(80, 80, 100);
+    doc.text(periodStr, pageW - margin, 6, { align: "right" });
+    const ruleY = textY + 14;
+    doc.setDrawColor(180, 190, 210); doc.setLineWidth(0.4);
     doc.line(margin, ruleY, pageW - margin, ruleY);
-    return ruleY + 2; // Y after header
+    return ruleY + 1.5;
   }
 
-  // ── Draw employee info bar ───────────────────────────────────────────────────
-  function drawEmployeeInfo(row: any, y: number) {
-    const bx = margin, bw = contentW, bh = 14;
-    doc.setFillColor(245, 247, 252);
-    doc.setDrawColor(200, 210, 230);
-    doc.setLineWidth(0.3);
-    doc.rect(bx, y, bw, bh, "FD");
+  // ── Build body rows: 3 sub-rows per employee (In / Out / Hrs) ───────────────
+  // Each row in the table: [empName, timeLabel, ...dayVals, P, A, L, TotalHrs]
+  // empName and summary cells are filled only for sub-row 0; blank for 1 & 2.
+  type SubRow = 0 | 1 | 2;
+  interface BodyMeta { empIdx: number; sub: SubRow }
+  const bodyData: any[][]  = [];
+  const bodyMeta: BodyMeta[] = [];
 
-    // Section title
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(22, 48, 110);
-    doc.text("MONTHLY ATTENDANCE RECORD", bx + 3, y + 5.5);
-
-    // Period right
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(80, 80, 100);
-    doc.text(periodStr, bx + bw - 3, y + 5.5, { align: "right" });
-
-    // Employee fields
-    const fields = [
-      { label: "Employee Name:", value: row.employeeName || "N/A" },
-      { label: "Employee ID:",   value: row.employeeCode || "N/A" },
-      { label: "Department:",    value: row.department   || "N/A" },
-      ...(row.staffCategory ? [{ label: "Staff Category:", value: row.staffCategory }] : []),
-    ];
-    const fw = bw / 4;
-    fields.forEach((f, i) => {
-      const fx = bx + i * fw + 3;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(6.5);
-      doc.setTextColor(100, 100, 120);
-      doc.text(f.label, fx, y + 10);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(7);
-      doc.setTextColor(22, 48, 110);
-      doc.text(f.value, fx + (i === 3 ? 20 : 18), y + 10);
+  rows.forEach((row, empIdx) => {
+    const subLabels = ["In", "Out", "Hrs"];
+    [0, 1, 2].forEach(subRaw => {
+      const sub = subRaw as SubRow;
+      const dayVals = daysArray.map(day => {
+        const e  = row.dailyStatus?.find((d: any) => d.day === day);
+        const st = e?.status || "absent";
+        if (sub === 0) return fmtTime24(e?.inTime)  || (st !== "absent" && st !== "holiday" && st !== "leave" ? "—" : st === "holiday" ? "H" : st === "leave" ? "LV" : "");
+        if (sub === 1) return fmtTime24(e?.outTime) || "";
+        // sub === 2: worked hours or status abbr
+        const h = e?.hours;
+        if (h != null && h > 0) return fmtHrs(h);
+        if (st !== "absent") return (STATUS_CFG[st] || STATUS_CFG.absent).abbr;
+        return "";
+      });
+      const empCell  = sub === 0 ? `${row.employeeName}\n${row.employeeCode}${row.designation ? `\n${row.designation}` : ""}` : "";
+      const pCell    = sub === 0 ? String(row.presentDays ?? 0) : "";
+      const aCell    = sub === 0 ? String(row.absentDays  ?? 0) : "";
+      const lCell    = sub === 0 ? String(row.lateDays    ?? 0) : "";
+      const totalCell = sub === 0 ? fmtHrs(row.totalWorkHours) : "";
+      bodyData.push([empCell, subLabels[sub], ...dayVals, pCell, aCell, lCell, totalCell]);
+      bodyMeta.push({ empIdx, sub });
     });
-    return y + bh + 2;
-  }
+  });
 
-  // ── Build column styles ──────────────────────────────────────────────────────
+  // ── Column styles ────────────────────────────────────────────────────────────
   const colStyles: Record<number, any> = {
-    0: { cellWidth: labelW, halign: "left", fontStyle: "bold", fontSize: 6,
-         textColor: [40, 40, 60], fillColor: [235, 240, 252] },
+    [COL_EMP]:  { cellWidth: empW,  halign: "left",   fontStyle: "bold",   fontSize: 6.5, textColor: [22, 48, 110]  },
+    [COL_TIME]: { cellWidth: timeW, halign: "center", fontStyle: "normal", fontSize: 6,   textColor: [80, 80, 100]  },
+    [COL_P]:    { cellWidth: sumW,  halign: "center", fontStyle: "bold",   fontSize: 7,   textColor: [21, 128, 61]  },
+    [COL_A]:    { cellWidth: sumW,  halign: "center", fontStyle: "bold",   fontSize: 7,   textColor: [185, 28, 28]  },
+    [COL_L]:    { cellWidth: sumW,  halign: "center", fontStyle: "bold",   fontSize: 7,   textColor: [146, 64, 14]  },
+    [COL_TOTAL]:{ cellWidth: sumW,  halign: "center", fontStyle: "bold",   fontSize: 6.5, textColor: [29, 78, 216]  },
   };
-  daysArray.forEach((day, i) => {
-    colStyles[1 + i] = {
+  daysArray.forEach((_, i) => {
+    colStyles[COL_DAY0 + i] = {
       cellWidth: dayW,
       halign: "center",
-      fontSize: 6.5,
-      cellPadding: { top: 1.5, bottom: 1.5, left: 0.5, right: 0.5 },
-      ...(isSunday(year, month, day) ? { fillColor: [254, 242, 242] } : {}),
+      fontSize: 6,
+      cellPadding: { top: 1, bottom: 1, left: 0.3, right: 0.3 },
     };
   });
 
-  // ── Metric row builder ───────────────────────────────────────────────────────
-  type MetricKey = "inTime" | "outTime" | "workedHrs" | "status" | "overtime";
-  const METRIC_LABELS: Record<MetricKey, string> = {
-    inTime:    "IN TIME",
-    outTime:   "OUT TIME",
-    workedHrs: "WORKED HRS",
-    status:    "STATUS",
-    overtime:  "OVERTIME",
-  };
-  function buildMetricRow(row: any, key: MetricKey): any[] {
-    const label = METRIC_LABELS[key];
-    const cells: any[] = [label];
-    daysArray.forEach(day => {
-      const e = row.dailyStatus?.find((d: any) => d.day === day);
-      const st = e?.status || "absent";
-      const abbr = (STATUS_CFG[st] || STATUS_CFG.absent).abbr;
-      switch (key) {
-        case "inTime":    cells.push(fmtTime24(e?.inTime)  || (st === "absent" ? "" : "—")); break;
-        case "outTime":   cells.push(fmtTime24(e?.outTime) || (st === "absent" ? "" : "—")); break;
-        case "workedHrs": {
-          const h = e?.hours;
-          cells.push(h != null && h > 0 ? fmtHrs(h) : (st === "absent" ? "" : "—"));
-          break;
-        }
-        case "status":   cells.push(abbr); break;
-        case "overtime": {
-          const ot = e?.overtimeHours;
-          cells.push(ot && ot > 0 ? fmtHrs(ot) : "-");
-          break;
-        }
+  // ── Head row ─────────────────────────────────────────────────────────────────
+  const headRow = [
+    "Employee", "Time",
+    ...daysArray.map(d => `${String(d).padStart(2,"0")}\n${getDayName(year, month, d)}`),
+    "P", "A", "L", "Total\nHrs",
+  ];
+
+  const startY = await drawPageHeader();
+
+  autoTable(doc, {
+    head: [headRow],
+    body: bodyData,
+    startY,
+    margin: { left: margin, right: margin },
+    tableWidth: contentW,
+    styles: {
+      font: "helvetica",
+      fontSize: 6,
+      cellPadding: { top: 1.2, bottom: 1.2, left: 1, right: 1 },
+      textColor: [40, 40, 60],
+      lineColor: [210, 218, 232],
+      lineWidth: 0.2,
+      minCellHeight: 5,
+      overflow: "linebreak",
+      halign: "center",
+      valign: "middle",
+    },
+    headStyles: {
+      fillColor: [30, 48, 100],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 5.8,
+      halign: "center",
+      cellPadding: { top: 1.5, bottom: 1.5, left: 0.5, right: 0.5 },
+      minCellHeight: 9,
+      lineWidth: 0,
+    },
+    columnStyles: colStyles,
+    bodyStyles:         { fillColor: [255, 255, 255] },
+    alternateRowStyles: { fillColor: [255, 255, 255] },
+    showHead: "everyPage",
+    rowPageBreak: "avoid",
+    didParseCell: (data: any) => {
+      if (data.section !== "body") {
+        // Head: Sunday columns dark red, first col darker
+        if (data.column.index === COL_EMP)  data.cell.styles.fillColor = [18, 38, 88];
+        if (data.column.index === COL_TIME) data.cell.styles.fillColor = [18, 38, 88];
+        const dIdx = data.column.index - COL_DAY0;
+        if (dIdx >= 0 && dIdx < daysArray.length && isSunday(year, month, daysArray[dIdx]))
+          data.cell.styles.fillColor = [110, 20, 20];
+        if (data.column.index >= COL_P) data.cell.styles.fillColor = [18, 38, 88];
+        return;
       }
-    });
-    return cells;
-  }
 
-  // ── Render one employee block ────────────────────────────────────────────────
-  let firstPage = true;
-  for (const row of rows) {
-    if (!firstPage) doc.addPage();
-    firstPage = false;
+      const { empIdx, sub } = bodyMeta[data.row.index];
+      const row = rows[empIdx];
+      const isFirstSub = sub === 0;
+      const isLastSub  = sub === 2;
+      const isNewEmp   = isFirstSub;
 
-    const headerY = await drawPageHeader();
-    const tableY  = drawEmployeeInfo(row, headerY);
+      // ── Employee name column ────────────────────────────────────────────────
+      if (data.column.index === COL_EMP) {
+        data.cell.styles.fillColor = [237, 242, 255];
+        data.cell.styles.valign    = "top";
+        data.cell.styles.fontSize  = 6.5;
+        data.cell.styles.fontStyle = "bold";
+        data.cell.styles.textColor = [22, 48, 110];
+        // remove inner horizontal borders between sub-rows
+        const noLine = { width: 0, color: [237, 242, 255] };
+        if (!isFirstSub) data.cell.styles.lineWidth = { top: 0, left: 0.2, bottom: isLastSub ? 0.2 : 0, right: 0.2 };
+        if (isFirstSub && !isLastSub) data.cell.styles.lineWidth = { top: isNewEmp ? 0.6 : 0.2, left: 0.2, bottom: 0, right: 0.2 };
+        if (isNewEmp) data.cell.styles.lineColor = { top: [22, 48, 110], left: [210,218,232], bottom: [210,218,232], right: [210,218,232] } as any;
+        return; // suppress noLine warning
+        void noLine;
+      }
 
-    // Head row: day numbers + day names
-    const headRow = ["TIME\nDETAILS", ...daysArray.map(d => {
-      const dn = getDayName(year, month, d);
-      return `${String(d).padStart(2,"0")}\n${dn}`;
-    })];
+      // ── Time label column ───────────────────────────────────────────────────
+      if (data.column.index === COL_TIME) {
+        if (sub === 0) { data.cell.styles.textColor = [21, 128, 61];  data.cell.styles.fontStyle = "bold"; }
+        if (sub === 1) { data.cell.styles.textColor = [185, 28, 28];  data.cell.styles.fontStyle = "bold"; }
+        if (sub === 2) { data.cell.styles.textColor = [29, 78, 216];  data.cell.styles.fontStyle = "bold"; }
+        data.cell.styles.fillColor = sub === 0 ? [235, 252, 240] : sub === 1 ? [255, 242, 242] : [235, 244, 255];
+        if (isNewEmp) data.cell.styles.lineWidth = { top: 0.6, left: 0.2, bottom: 0.2, right: 0.2 };
+        return;
+      }
 
-    const body: any[][] = [
-      buildMetricRow(row, "inTime"),
-      buildMetricRow(row, "outTime"),
-      buildMetricRow(row, "workedHrs"),
-      buildMetricRow(row, "status"),
-      buildMetricRow(row, "overtime"),
-    ];
+      // ── Summary columns (P / A / L / TotalHrs) ─────────────────────────────
+      if (data.column.index >= COL_P) {
+        const bgColor = data.column.index === COL_P ? [235, 252, 240]
+          : data.column.index === COL_A ? [255, 242, 242]
+          : data.column.index === COL_L ? [255, 249, 235]
+          : [235, 244, 255];
+        data.cell.styles.fillColor = bgColor;
+        if (!isFirstSub) data.cell.styles.lineWidth = { top: 0, left: 0.2, bottom: isLastSub ? 0.2 : 0, right: 0.2 };
+        if (isFirstSub)  data.cell.styles.lineWidth = { top: isNewEmp ? 0.6 : 0.2, left: 0.2, bottom: 0, right: 0.2 };
+        return;
+      }
 
-    autoTable(doc, {
-      head: [headRow],
-      body,
-      startY: tableY,
-      margin: { left: margin, right: margin },
-      tableWidth: contentW,
-      styles: {
-        font: "helvetica",
-        fontSize: 6.5,
-        cellPadding: { top: 2, bottom: 2, left: 1, right: 1 },
-        textColor: [40, 40, 60],
-        lineColor: [200, 210, 230],
-        lineWidth: 0.25,
-        minCellHeight: 7,
-        overflow: "linebreak",
-        halign: "center",
-      },
-      headStyles: {
-        fillColor: [22, 48, 110],
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-        fontSize: 6,
-        halign: "center",
-        cellPadding: { top: 2, bottom: 2, left: 0.5, right: 0.5 },
-        minCellHeight: 10,
-        lineWidth: 0,
-      },
-      columnStyles: colStyles,
-      bodyStyles:   { fillColor: [255, 255, 255] },
-      alternateRowStyles: { fillColor: [247, 250, 255] },
-      didParseCell: (data: any) => {
-        const dayIdx = data.column.index - 1;
-        // Sunday tint
-        if (dayIdx >= 0 && dayIdx < daysArray.length) {
-          const day = daysArray[dayIdx];
-          if (isSunday(year, month, day)) {
-            if (data.section === "head") data.cell.styles.fillColor = [127, 29, 29];
-            if (data.section === "body") data.cell.styles.fillColor = [254, 242, 242];
-          }
-        }
-        // Row-level value colours (only for day columns, not the label column)
-        if (data.section === "body" && data.column.index > 0) {
-          const ri = data.row.index;
-          // IN TIME  — dark red
-          if (ri === 0) data.cell.styles.textColor = [185, 28, 28];
-          // OUT TIME — dark navy
-          if (ri === 1) data.cell.styles.textColor = [22, 48, 110];
-          // WORKED HRS — dark slate
-          if (ri === 2) data.cell.styles.textColor = [50, 50, 70];
-          // STATUS — colour per status code
-          if (ri === 3) {
-            const v = String(data.cell.raw || "");
-            if (v === "P")  data.cell.styles.textColor = [21, 128, 61];
-            if (v === "L")  data.cell.styles.textColor = [146, 64, 14];
-            if (v === "A")  data.cell.styles.textColor = [185, 28, 28];
-            if (v === "HD") data.cell.styles.textColor = [113, 63, 18];
-            if (v === "LV") data.cell.styles.textColor = [29, 78, 216];
-            if (v === "H")  data.cell.styles.textColor = [100, 100, 120];
-          }
-          // OVERTIME — amber orange
-          if (ri === 4) data.cell.styles.textColor = [180, 83, 9];
-        }
-        // Label column — bold navy, left-aligned, light blue tint
-        if (data.column.index === 0 && data.section === "body") {
-          data.cell.styles.fontStyle = "bold";
-          data.cell.styles.fontSize  = 5.5;
-          data.cell.styles.textColor = [22, 48, 110];
-          data.cell.styles.halign    = "left";
-          data.cell.styles.fillColor = [232, 238, 255];
-        }
-        // Label column in head — same tint
-        if (data.column.index === 0 && data.section === "head") {
-          data.cell.styles.fillColor = [15, 35, 90];
-        }
-      },
-      showHead: "everyPage",
-    });
+      // ── Day columns ─────────────────────────────────────────────────────────
+      const dIdx = data.column.index - COL_DAY0;
+      if (dIdx < 0 || dIdx >= daysArray.length) return;
+      const day = daysArray[dIdx];
+      const isSun = isSunday(year, month, day);
+      const e  = row.dailyStatus?.find((d: any) => d.day === day);
+      const st = e?.status || "absent";
 
-    // Monthly summary bar
-    const sumY = (doc as any).lastAutoTable.finalY + 3;
-    const totalHrs = fmtHrs(row.totalWorkHours);
-    const totalOT  = row.overtimeHours > 0 ? fmtHrs(row.overtimeHours) : "0h";
-    doc.setFillColor(235, 240, 252);
-    doc.setDrawColor(200, 210, 230);
-    doc.setLineWidth(0.3);
-    doc.rect(margin, sumY, contentW, 9, "FD");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
-    doc.setTextColor(22, 48, 110);
-    doc.text(`MONTHLY SUMMARY - ${row.employeeName} (${row.employeeCode})`, margin + 3, sumY + 5.5);
-    doc.setTextColor(80, 80, 100);
-    doc.text(`Total Working Hours: ${totalHrs}  |  Total Overtime Hours: ${totalOT}`, pageW - margin - 3, sumY + 5.5, { align: "right" });
-  }
+      data.cell.styles.fillColor = isSun ? [254, 240, 240] : [255, 255, 255];
 
-  // Footer on every page
+      // New employee group — thick top border on day cells
+      if (isNewEmp) data.cell.styles.lineWidth = { top: 0.6, left: 0.2, bottom: 0.2, right: 0.2 };
+
+      // Color by sub-row type
+      if (sub === 0) data.cell.styles.textColor = [21, 120, 50];   // In — green
+      if (sub === 1) data.cell.styles.textColor = [170, 20, 20];   // Out — red
+      if (sub === 2) {
+        // Hrs row: color by status
+        const v = String(data.cell.raw || "");
+        if (v === "P")  data.cell.styles.textColor = [21, 128, 61];
+        else if (v === "L")  data.cell.styles.textColor = [146, 64, 14];
+        else if (v === "A")  data.cell.styles.textColor = [185, 28, 28];
+        else if (v === "HD") data.cell.styles.textColor = [113, 63, 18];
+        else if (v === "LV") data.cell.styles.textColor = [29, 78, 216];
+        else if (v === "H")  data.cell.styles.textColor = [100, 100, 120];
+        else                 data.cell.styles.textColor = [50, 80, 160];  // hours — blue
+      }
+    },
+  });
+
+  // ── Footers ──────────────────────────────────────────────────────────────────
   const count = doc.internal.getNumberOfPages();
+  const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
   for (let i = 1; i <= count; i++) {
     doc.setPage(i);
-    const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
-    doc.setDrawColor(200, 210, 230);
-    doc.setLineWidth(0.3);
-    doc.line(margin, pageH - 11, pageW - margin, pageH - 11);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(6);
-    doc.setTextColor(120, 120, 140);
-    doc.text(`Generated: ${today} | Sri Lanka Post | Confidential Document`, pageW / 2, pageH - 7, { align: "center" });
-    if (liveUData) doc.addImage(liveUData, "JPEG", pageW / 2 - 18, pageH - 5.5, 4, 4);
-    doc.text("Powered by  Live U (Pvt) Ltd", pageW / 2 - 12, pageH - 3.5, { align: "left" });
-    doc.setTextColor(150);
-    doc.text(`Page ${i} of ${count}`, pageW - margin, pageH - 5.5, { align: "right" });
+    doc.setDrawColor(200, 210, 230); doc.setLineWidth(0.3);
+    doc.line(margin, pageH - 10, pageW - margin, pageH - 10);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(5.8); doc.setTextColor(130, 130, 150);
+    doc.text(`Generated: ${today} | Sri Lanka Post | Confidential Document`, pageW / 2, pageH - 6.5, { align: "center" });
+    if (liveUData) doc.addImage(liveUData, "JPEG", pageW / 2 - 17, pageH - 5, 3.5, 3.5);
+    doc.text("Powered by  Live U (Pvt) Ltd", pageW / 2 - 12, pageH - 3, { align: "left" });
+    doc.setTextColor(160);
+    doc.text(`Page ${i} of ${count}`, pageW - margin, pageH - 6.5, { align: "right" });
   }
 
   doc.save(`${filename}.pdf`);
