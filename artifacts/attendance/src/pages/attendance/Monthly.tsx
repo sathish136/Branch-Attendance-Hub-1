@@ -1018,27 +1018,27 @@ export default function MonthlySheet() {
             <table className="text-[11px] border-collapse w-full table-fixed">
               <thead className="sticky top-0 z-30">
                 <tr>
-                  <th className="px-3 py-2 bg-slate-700 text-white font-semibold border border-slate-600 sticky left-0 z-40 w-[160px] text-left">
+                  <th className="px-3 py-2 bg-slate-500 text-white font-semibold border border-slate-400 sticky left-0 z-40 w-[160px] text-left">
                     Employee
                   </th>
-                  <th className="px-1 py-2 bg-slate-800 text-slate-300 font-semibold border border-slate-600 text-center w-[32px] text-[10px]">
+                  <th className="px-1 py-2 bg-slate-400 text-slate-800 font-semibold border border-slate-300 text-center w-[32px] text-[10px]">
                     Time
                   </th>
                   {daysArray.map(day => (
                     <th key={day} className={cn(
-                      "px-0 py-1 font-semibold border border-slate-600 text-center",
-                      isSunday(year, month, day) ? "bg-red-900/70 text-red-200" : "bg-slate-700 text-white",
+                      "px-0 py-1 font-semibold border border-slate-300 text-center",
+                      isSunday(year, month, day) ? "bg-red-400/80 text-white" : "bg-slate-500 text-white",
                     )}>
                       <div className="font-bold leading-tight text-[11px]">{day}</div>
                       <div className={cn("text-[9px] font-normal leading-tight",
-                        isSunday(year, month, day) ? "text-red-300" : "text-slate-400")}>
+                        isSunday(year, month, day) ? "text-red-100" : "text-slate-200")}>
                         {getDayName(year, month, day)}
                       </div>
                     </th>
                   ))}
-                  <th className="px-1 py-2 bg-green-700  text-white font-bold border border-slate-600 text-center w-[28px] text-[10px]">P</th>
-                  <th className="px-1 py-2 bg-red-700    text-white font-bold border border-slate-600 text-center w-[28px] text-[10px]">A</th>
-                  <th className="px-1 py-2 bg-blue-700   text-white font-bold border border-slate-600 text-center w-[48px] text-[10px]">Hrs</th>
+                  <th className="px-1 py-2 bg-green-500  text-white font-bold border border-slate-300 text-center w-[28px] text-[10px]">P</th>
+                  <th className="px-1 py-2 bg-red-500    text-white font-bold border border-slate-300 text-center w-[28px] text-[10px]">A</th>
+                  <th className="px-1 py-2 bg-blue-500   text-white font-bold border border-slate-300 text-center w-[48px] text-[10px]">Hrs</th>
                 </tr>
               </thead>
               <tbody>
