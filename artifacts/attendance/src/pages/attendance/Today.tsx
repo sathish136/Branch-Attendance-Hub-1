@@ -34,12 +34,15 @@ export default function TodayAttendance() {
 
   const allRecords: any[] = data?.records || [];
   const records = useMemo(() => {
-    if (!search.trim()) return allRecords;
-    const q = search.toLowerCase();
-    return allRecords.filter((r: any) =>
-      r.employeeName?.toLowerCase().includes(q) ||
-      r.employeeCode?.toLowerCase().includes(q) ||
-      r.branchName?.toLowerCase().includes(q)
+    const filtered = !search.trim()
+      ? allRecords
+      : allRecords.filter((r: any) =>
+          r.employeeName?.toLowerCase().includes(search.toLowerCase()) ||
+          r.employeeCode?.toLowerCase().includes(search.toLowerCase()) ||
+          r.branchName?.toLowerCase().includes(search.toLowerCase())
+        );
+    return [...filtered].sort((a, b) =>
+      (a.branchName || "").localeCompare(b.branchName || "")
     );
   }, [allRecords, search]);
 
