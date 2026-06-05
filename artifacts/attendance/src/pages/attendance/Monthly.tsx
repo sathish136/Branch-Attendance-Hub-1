@@ -243,16 +243,12 @@ async function exportGridPdf(
   ];
 
   // ── Helper: build body data for a slice of employees ─────────────────────────
-  type SubRow = 0 | 1 | 2;
-  interface BodyMeta { empIdxInSlice: number; sub: SubRow }
-
-  function buildBodyForSlice(slice: any[]) {
+  const buildBodyForSlice = (slice: any[]) => {
     const bodyData: any[][] = [];
-    const bodyMeta: BodyMeta[] = [];
+    const bodyMeta: Array<{ empIdxInSlice: number; sub: number }> = [];
     slice.forEach((row, empIdxInSlice) => {
       const subLabels = ["In", "Out", "Hrs"];
-      [0, 1, 2].forEach(subRaw => {
-        const sub = subRaw as SubRow;
+      [0, 1, 2].forEach(sub => {
         const dayVals = daysArray.map(day => {
           const e  = row.dailyStatus?.find((d: any) => d.day === day);
           const st = e?.status || "absent";
@@ -272,10 +268,10 @@ async function exportGridPdf(
       });
     });
     return { bodyData, bodyMeta };
-  }
+  };
 
   // ── Render one chunk of employees ────────────────────────────────────────────
-  function renderChunk(slice: any[], startY: number) {
+  const renderChunk = (slice: any[], startY: number) => {
     const { bodyData, bodyMeta } = buildBodyForSlice(slice);
     autoTable(doc, {
       head: [headRow],
