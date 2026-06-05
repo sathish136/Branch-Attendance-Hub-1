@@ -218,38 +218,6 @@ async function exportGridPdf(
     return ruleY + 1.5;
   }
 
-  // ── Build body rows: 3 sub-rows per employee (In / Out / Hrs) ───────────────
-  // Each row in the table: [empName, timeLabel, ...dayVals, P, A, L, TotalHrs]
-  // empName and summary cells are filled only for sub-row 0; blank for 1 & 2.
-  type SubRow = 0 | 1 | 2;
-  interface BodyMeta { empIdx: number; sub: SubRow }
-  const bodyData: any[][]  = [];
-  const bodyMeta: BodyMeta[] = [];
-
-  rows.forEach((row, empIdx) => {
-    const subLabels = ["In", "Out", "Hrs"];
-    [0, 1, 2].forEach(subRaw => {
-      const sub = subRaw as SubRow;
-      const dayVals = daysArray.map(day => {
-        const e  = row.dailyStatus?.find((d: any) => d.day === day);
-        const st = e?.status || "absent";
-        if (sub === 0) return fmtTime24(e?.inTime)  || (st !== "absent" && st !== "holiday" && st !== "leave" ? "—" : st === "holiday" ? "H" : st === "leave" ? "LV" : "");
-        if (sub === 1) return fmtTime24(e?.outTime) || "";
-        // sub === 2: worked hours or status abbr
-        const h = e?.hours;
-        if (h != null && h > 0) return fmtHrs(h);
-        if (st !== "absent") return (STATUS_CFG[st] || STATUS_CFG.absent).abbr;
-        return "";
-      });
-      const empCell  = sub === 0 ? `${row.employeeName}\n${row.employeeCode}${row.designation ? `\n${row.designation}` : ""}` : "";
-      const pCell    = sub === 0 ? String(row.presentDays ?? 0) : "";
-      const aCell    = sub === 0 ? String(row.absentDays  ?? 0) : "";
-      const totalCell = sub === 0 ? fmtHrs(row.totalWorkHours) : "";
-      bodyData.push([empCell, subLabels[sub], ...dayVals, pCell, aCell, totalCell]);
-      bodyMeta.push({ empIdx, sub });
-    });
-  });
-
   // ── Column styles ────────────────────────────────────────────────────────────
   const colStyles: Record<number, any> = {
     [COL_EMP]:  { cellWidth: empW,  halign: "left",   fontStyle: "bold",   fontSize: 6.5, textColor: [22, 48, 110]  },
@@ -274,125 +242,150 @@ async function exportGridPdf(
     "P", "A", "Total\nHrs",
   ];
 
-  const startY = await drawPageHeader();
+  // ── Helper: build body data for a slice of employees ─────────────────────────
+  type SubRow = 0 | 1 | 2;
+  interface BodyMeta { empIdxInSlice: number; sub: SubRow }
 
-  autoTable(doc, {
-    head: [headRow],
-    body: bodyData,
-    startY,
-    margin: { left: margin, right: margin },
-    tableWidth: contentW,
-    styles: {
-      font: "helvetica",
-      fontSize: 6,
-      cellPadding: { top: 1.2, bottom: 1.2, left: 1, right: 1 },
-      textColor: [40, 40, 60],
-      lineColor: [210, 218, 232],
-      lineWidth: 0.2,
-      minCellHeight: 5,
-      overflow: "linebreak",
-      halign: "center",
-      valign: "middle",
-    },
-    headStyles: {
-      fillColor: [30, 48, 100],
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      fontSize: 5.8,
-      halign: "center",
-      cellPadding: { top: 1.5, bottom: 1.5, left: 0.5, right: 0.5 },
-      minCellHeight: 9,
-      lineWidth: 0,
-    },
-    columnStyles: colStyles,
-    bodyStyles:         { fillColor: [255, 255, 255] },
-    alternateRowStyles: { fillColor: [255, 255, 255] },
-    showHead: "everyPage",
-    rowPageBreak: "avoid",
-    didParseCell: (data: any) => {
-      if (data.section !== "body") {
-        // Head: Sunday columns dark red, first col darker
-        if (data.column.index === COL_EMP)  data.cell.styles.fillColor = [18, 38, 88];
-        if (data.column.index === COL_TIME) data.cell.styles.fillColor = [18, 38, 88];
+  function buildBodyForSlice(slice: any[]) {
+    const bodyData: any[][] = [];
+    const bodyMeta: BodyMeta[] = [];
+    slice.forEach((row, empIdxInSlice) => {
+      const subLabels = ["In", "Out", "Hrs"];
+      [0, 1, 2].forEach(subRaw => {
+        const sub = subRaw as SubRow;
+        const dayVals = daysArray.map(day => {
+          const e  = row.dailyStatus?.find((d: any) => d.day === day);
+          const st = e?.status || "absent";
+          if (sub === 0) return fmtTime24(e?.inTime)  || (st !== "absent" && st !== "holiday" && st !== "leave" ? "—" : st === "holiday" ? "H" : st === "leave" ? "LV" : "");
+          if (sub === 1) return fmtTime24(e?.outTime) || "";
+          const h = e?.hours;
+          if (h != null && h > 0) return fmtHrs(h);
+          if (st !== "absent") return (STATUS_CFG[st] || STATUS_CFG.absent).abbr;
+          return "";
+        });
+        const empCell   = sub === 0 ? `${row.employeeName}\n${row.employeeCode}${row.designation ? `\n${row.designation}` : ""}` : "";
+        const pCell     = sub === 0 ? String(row.presentDays ?? 0) : "";
+        const aCell     = sub === 0 ? String(row.absentDays  ?? 0) : "";
+        const totalCell = sub === 0 ? fmtHrs(row.totalWorkHours) : "";
+        bodyData.push([empCell, subLabels[sub], ...dayVals, pCell, aCell, totalCell]);
+        bodyMeta.push({ empIdxInSlice, sub });
+      });
+    });
+    return { bodyData, bodyMeta };
+  }
+
+  // ── Render one chunk of employees ────────────────────────────────────────────
+  function renderChunk(slice: any[], startY: number) {
+    const { bodyData, bodyMeta } = buildBodyForSlice(slice);
+    autoTable(doc, {
+      head: [headRow],
+      body: bodyData,
+      startY,
+      margin: { left: margin, right: margin },
+      tableWidth: contentW,
+      styles: {
+        font: "helvetica",
+        fontSize: 6,
+        cellPadding: { top: 1.2, bottom: 1.2, left: 1, right: 1 },
+        textColor: [40, 40, 60],
+        lineColor: [210, 218, 232],
+        lineWidth: 0.2,
+        minCellHeight: 5,
+        overflow: "linebreak",
+        halign: "center",
+        valign: "middle",
+      },
+      headStyles: {
+        fillColor: [30, 48, 100],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 5.8,
+        halign: "center",
+        cellPadding: { top: 1.5, bottom: 1.5, left: 0.5, right: 0.5 },
+        minCellHeight: 9,
+        lineWidth: 0,
+      },
+      columnStyles: colStyles,
+      bodyStyles:         { fillColor: [255, 255, 255] },
+      alternateRowStyles: { fillColor: [255, 255, 255] },
+      showHead: "firstPage",
+      rowPageBreak: "avoid",
+      didParseCell: (data: any) => {
+        if (data.section !== "body") {
+          if (data.column.index === COL_EMP)  data.cell.styles.fillColor = [18, 38, 88];
+          if (data.column.index === COL_TIME) data.cell.styles.fillColor = [18, 38, 88];
+          const dIdx = data.column.index - COL_DAY0;
+          if (dIdx >= 0 && dIdx < daysArray.length && isSunday(year, month, daysArray[dIdx]))
+            data.cell.styles.fillColor = [110, 20, 20];
+          if (data.column.index >= COL_P) data.cell.styles.fillColor = [18, 38, 88];
+          return;
+        }
+        const { empIdxInSlice, sub } = bodyMeta[data.row.index];
+        const row = slice[empIdxInSlice];
+        const isFirstSub = sub === 0;
+        const isLastSub  = sub === 2;
+        const isNewEmp   = isFirstSub;
+
+        if (data.column.index === COL_EMP) {
+          data.cell.styles.fillColor = [237, 242, 255];
+          data.cell.styles.valign    = "top";
+          data.cell.styles.fontSize  = 6.5;
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.textColor = [22, 48, 110];
+          if (!isFirstSub) data.cell.styles.lineWidth = { top: 0, left: 0.2, bottom: isLastSub ? 0.2 : 0, right: 0.2 };
+          if (isFirstSub && !isLastSub) data.cell.styles.lineWidth = { top: isNewEmp ? 0.6 : 0.2, left: 0.2, bottom: 0, right: 0.2 };
+          if (isNewEmp) data.cell.styles.lineColor = { top: [22, 48, 110], left: [210,218,232], bottom: [210,218,232], right: [210,218,232] } as any;
+          return;
+        }
+        if (data.column.index === COL_TIME) {
+          if (sub === 0) { data.cell.styles.textColor = [21, 128, 61];  data.cell.styles.fontStyle = "bold"; }
+          if (sub === 1) { data.cell.styles.textColor = [185, 28, 28];  data.cell.styles.fontStyle = "bold"; }
+          if (sub === 2) { data.cell.styles.textColor = [29, 78, 216];  data.cell.styles.fontStyle = "bold"; }
+          data.cell.styles.fillColor = sub === 0 ? [235, 252, 240] : sub === 1 ? [255, 242, 242] : [235, 244, 255];
+          if (isNewEmp) data.cell.styles.lineWidth = { top: 0.6, left: 0.2, bottom: 0.2, right: 0.2 };
+          return;
+        }
+        if (data.column.index >= COL_P) {
+          const bgColor = data.column.index === COL_P ? [235, 252, 240]
+            : data.column.index === COL_A ? [255, 242, 242]
+            : [235, 244, 255];
+          data.cell.styles.fillColor = bgColor;
+          if (!isFirstSub) data.cell.styles.lineWidth = { top: 0, left: 0.2, bottom: isLastSub ? 0.2 : 0, right: 0.2 };
+          if (isFirstSub)  data.cell.styles.lineWidth = { top: isNewEmp ? 0.6 : 0.2, left: 0.2, bottom: 0, right: 0.2 };
+          return;
+        }
         const dIdx = data.column.index - COL_DAY0;
-        if (dIdx >= 0 && dIdx < daysArray.length && isSunday(year, month, daysArray[dIdx]))
-          data.cell.styles.fillColor = [110, 20, 20];
-        if (data.column.index >= COL_P) data.cell.styles.fillColor = [18, 38, 88];
-        return;
-      }
-
-      const { empIdx, sub } = bodyMeta[data.row.index];
-      const row = rows[empIdx];
-      const isFirstSub = sub === 0;
-      const isLastSub  = sub === 2;
-      const isNewEmp   = isFirstSub;
-
-      // ── Employee name column ────────────────────────────────────────────────
-      if (data.column.index === COL_EMP) {
-        data.cell.styles.fillColor = [237, 242, 255];
-        data.cell.styles.valign    = "top";
-        data.cell.styles.fontSize  = 6.5;
-        data.cell.styles.fontStyle = "bold";
-        data.cell.styles.textColor = [22, 48, 110];
-        // remove inner horizontal borders between sub-rows
-        const noLine = { width: 0, color: [237, 242, 255] };
-        if (!isFirstSub) data.cell.styles.lineWidth = { top: 0, left: 0.2, bottom: isLastSub ? 0.2 : 0, right: 0.2 };
-        if (isFirstSub && !isLastSub) data.cell.styles.lineWidth = { top: isNewEmp ? 0.6 : 0.2, left: 0.2, bottom: 0, right: 0.2 };
-        if (isNewEmp) data.cell.styles.lineColor = { top: [22, 48, 110], left: [210,218,232], bottom: [210,218,232], right: [210,218,232] } as any;
-        return; // suppress noLine warning
-        void noLine;
-      }
-
-      // ── Time label column ───────────────────────────────────────────────────
-      if (data.column.index === COL_TIME) {
-        if (sub === 0) { data.cell.styles.textColor = [21, 128, 61];  data.cell.styles.fontStyle = "bold"; }
-        if (sub === 1) { data.cell.styles.textColor = [185, 28, 28];  data.cell.styles.fontStyle = "bold"; }
-        if (sub === 2) { data.cell.styles.textColor = [29, 78, 216];  data.cell.styles.fontStyle = "bold"; }
-        data.cell.styles.fillColor = sub === 0 ? [235, 252, 240] : sub === 1 ? [255, 242, 242] : [235, 244, 255];
+        if (dIdx < 0 || dIdx >= daysArray.length) return;
+        const day = daysArray[dIdx];
+        const isSun = isSunday(year, month, day);
+        const e  = row.dailyStatus?.find((d: any) => d.day === day);
+        const st = e?.status || "absent";
+        data.cell.styles.fillColor = isSun ? [254, 240, 240] : [255, 255, 255];
         if (isNewEmp) data.cell.styles.lineWidth = { top: 0.6, left: 0.2, bottom: 0.2, right: 0.2 };
-        return;
-      }
+        if (sub === 0) data.cell.styles.textColor = [21, 120, 50];
+        if (sub === 1) data.cell.styles.textColor = [170, 20, 20];
+        if (sub === 2) {
+          const v = String(data.cell.raw || "");
+          if (v === "P")       data.cell.styles.textColor = [21, 128, 61];
+          else if (v === "L")  data.cell.styles.textColor = [146, 64, 14];
+          else if (v === "A")  data.cell.styles.textColor = [185, 28, 28];
+          else if (v === "HD") data.cell.styles.textColor = [113, 63, 18];
+          else if (v === "LV") data.cell.styles.textColor = [29, 78, 216];
+          else if (v === "H")  data.cell.styles.textColor = [100, 100, 120];
+          else                 data.cell.styles.textColor = [50, 80, 160];
+        }
+      },
+    });
+  }
 
-      // ── Summary columns (P / A / L / TotalHrs) ─────────────────────────────
-      if (data.column.index >= COL_P) {
-        const bgColor = data.column.index === COL_P ? [235, 252, 240]
-          : data.column.index === COL_A ? [255, 242, 242]
-          : [235, 244, 255];
-        data.cell.styles.fillColor = bgColor;
-        if (!isFirstSub) data.cell.styles.lineWidth = { top: 0, left: 0.2, bottom: isLastSub ? 0.2 : 0, right: 0.2 };
-        if (isFirstSub)  data.cell.styles.lineWidth = { top: isNewEmp ? 0.6 : 0.2, left: 0.2, bottom: 0, right: 0.2 };
-        return;
-      }
-
-      // ── Day columns ─────────────────────────────────────────────────────────
-      const dIdx = data.column.index - COL_DAY0;
-      if (dIdx < 0 || dIdx >= daysArray.length) return;
-      const day = daysArray[dIdx];
-      const isSun = isSunday(year, month, day);
-      const e  = row.dailyStatus?.find((d: any) => d.day === day);
-      const st = e?.status || "absent";
-
-      data.cell.styles.fillColor = isSun ? [254, 240, 240] : [255, 255, 255];
-
-      // New employee group — thick top border on day cells
-      if (isNewEmp) data.cell.styles.lineWidth = { top: 0.6, left: 0.2, bottom: 0.2, right: 0.2 };
-
-      // Color by sub-row type
-      if (sub === 0) data.cell.styles.textColor = [21, 120, 50];   // In — green
-      if (sub === 1) data.cell.styles.textColor = [170, 20, 20];   // Out — red
-      if (sub === 2) {
-        // Hrs row: color by status
-        const v = String(data.cell.raw || "");
-        if (v === "P")  data.cell.styles.textColor = [21, 128, 61];
-        else if (v === "L")  data.cell.styles.textColor = [146, 64, 14];
-        else if (v === "A")  data.cell.styles.textColor = [185, 28, 28];
-        else if (v === "HD") data.cell.styles.textColor = [113, 63, 18];
-        else if (v === "LV") data.cell.styles.textColor = [29, 78, 216];
-        else if (v === "H")  data.cell.styles.textColor = [100, 100, 120];
-        else                 data.cell.styles.textColor = [50, 80, 160];  // hours — blue
-      }
-    },
-  });
+  // ── Render in chunks of 6 employees per page ──────────────────────────────
+  const CHUNK = 6;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const slice = rows.slice(i, i + CHUNK);
+    if (i > 0) doc.addPage();
+    const startY = await drawPageHeader();
+    renderChunk(slice, startY);
+  }
 
   // ── Footers ──────────────────────────────────────────────────────────────────
   const count = doc.internal.getNumberOfPages();
@@ -570,16 +563,16 @@ async function exportGridExcel(rows: any[], daysArray: number[], year: number, m
     HD: "FF713F12", LV: "FF1D4ED8", H: "FF646478",
   };
 
-  for (const [empIdx, row] of rows.entries()) {
-    if (empIdx > 0) ws.addRow([]); // blank separator
+  // ── Document header — once at the top only ────────────────────────────────
+  addMergedTitle("SRI LANKA POST",              "FF16306E", true,  13, "FFFFFFFF");
+  addMergedTitle("Human Resources Department",  "FF505064", false,  8, "FFFFFFFF");
+  addMergedTitle("MONTHLY ATTENDANCE SHEET",    "FF8B0000", true,   9, "FFFFFFFF");
+  addMergedTitle(`Branch: ${branchLabel}`,      "FF1E3A8A", false,  8, "FFFFFFFF");
+  addMergedTitle(periodStr,                     "FF505064", false,  7, "FFFFFFFF");
+  ws.addRow([]);
 
-    // ── Document header (on every employee block) ──────────────────
-    addMergedTitle("SRI LANKA POST",              "FF16306E", true,  13, "FFFFFFFF");
-    addMergedTitle("Human Resources Department",  "FF505064", false,  8, "FFFFFFFF");
-    addMergedTitle("MONTHLY ATTENDANCE SHEET",    "FF8B0000", true,   9, "FFFFFFFF");
-    addMergedTitle(`Branch: ${branchLabel}`,      "FF1E3A8A", false,  8, "FFFFFFFF");
-    addMergedTitle(periodStr,                     "FF505064", false,  7, "FFFFFFFF");
-    ws.addRow([]);
+  for (const [empIdx, row] of rows.entries()) {
+    if (empIdx > 0) ws.addRow([]); // blank separator between employees
 
     // ── Employee info bar ──────────────────────────────────────────
     const infoFields = [
